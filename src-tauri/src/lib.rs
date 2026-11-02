@@ -3,6 +3,9 @@
 //! @details Initializes the Tauri runtime builder, registers command handlers,
 //! manages audio engine lifecycle states, and handles application exit events.
 
+/// @brief Core audio processing engine, lock-free ring buffers, and DSP primitives.
+pub mod audio;
+
 /// @brief Initializes and runs the Dyno Virtual Audio Mixer Tauri desktop application.
 /// @details Sets up the Tauri builder, attaches state containers, configures window events,
 /// and starts the application event loop.
