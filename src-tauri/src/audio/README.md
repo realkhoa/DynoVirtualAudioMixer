@@ -1,7 +1,7 @@
-# Core Audio Engine - Lock-Free Ring Buffer, Device Enumeration, Routing Matrix & Real-Time Mixer Pipeline
+# Core Audio Engine - Lock-Free Ring Buffer, Device Enumeration, Routing Matrix, Virtual Device Manager & Real-Time Mixer Pipeline
 
 ## 1. Overview & Purpose
-This module provides low-latency, real-time audio primitives, device discovery, active process audio session detection, pin-level routing matrix graph evaluation, and multi-source soft-clipping audio mixing for the Dyno Virtual Audio Mixer. It bridges audio capture threads (WASAPI capture callbacks) and playback/mixing threads without mutex contention, memory reallocation, or priority inversion, while enabling dynamic discovery of hardware endpoints, software audio sessions, and arbitrary pin-to-pin audio patching.
+This module provides low-latency, real-time audio primitives, device discovery, active process audio session detection, virtual audio device management (VB-Cable, Virtual Audio Cable, Software Loopback), pin-level routing matrix graph evaluation, and multi-source soft-clipping audio mixing for the Dyno Virtual Audio Mixer. It bridges audio capture threads (WASAPI capture callbacks) and playback/mixing threads without mutex contention, memory reallocation, or priority inversion, while enabling dynamic discovery of hardware endpoints, software audio sessions, virtual audio cables, and arbitrary pin-to-pin audio patching.
 
 Key responsibilities:
 - **`AudioChunk`**: Interleaved 32-bit floating-point PCM audio chunk with channel count and sample rate metadata.
@@ -11,6 +11,7 @@ Key responsibilities:
 - **Soft Clipping / Limiter**: Hyperbolic tangent (`tanh`) saturation to smoothly protect against hard digital clipping during multi-track summing.
 - **`list_audio_devices()`**: Enumerates all physical and virtual input and output audio endpoints via CPAL/WASAPI, extracting channels, sample rates, and default flags.
 - **`list_audio_processes()`**: Scans active Windows WASAPI audio sessions, identifies running applications producing or capable of producing audio (Spotify, Discord, browsers, games), and associates them with PIDs and window titles.
+- **`VirtualCableType` / `VirtualDeviceDescriptor` / `VirtualDeviceManager`**: Manages virtual audio devices on Windows, supporting VB-Audio Cable, Virtual Audio Cable (VAC), and software loopback endpoints for zero-hardware audio routing.
 - **`AudioPinId` / `ConnectionWire` / `MixerNode`**: Topological primitives for graph-based audio patchbays with node volumes, wire gains, and granular muting.
 - **`RoutingMatrix`**: Arbitrary multichannel routing matrix handling 1-to-1 direct routing, stereo downmixing, mono channel splitting, volume scaling, muting, and smooth soft saturation.
 - **`AudioMixerEngine`**: Central mixing pipeline coordinating staged source buffers and matrix evaluation to produce destination render frames.
@@ -52,6 +53,13 @@ Key responsibilities:
 | `AudioProcessDescriptor` | Struct containing `pid: u32`, `name: String`, `title: String`, `has_audio_session: bool`. |
 | `list_audio_processes() -> Result<Vec<AudioProcessDescriptor>, String>` | Scans WASAPI active audio sessions and application windows to discover audio-producing processes. |
 | `is_audio_candidate_application(name: &str) -> bool` | Heuristic predicate identifying well-known audio/media applications (Spotify, Discord, Chrome, etc.). |
+
+### Virtual Audio Device Adapter (`virtual_device.rs`)
+| Type / Function | Description |
+|---|---|
+| `VirtualCableType` | Enum (`VBCable`, `VirtualAudioCable`, `SoftwareLoopbackEndpoint`) with display names and driver classification. |
+| `VirtualDeviceDescriptor` | Metadata struct representing an instantiated virtual audio device/cable with endpoint IDs, channels, and sample rate. |
+| `VirtualDeviceManager` | Manager for detecting installed third-party drivers (`detect_available_drivers`), creating named cables (`create_virtual_device`), auto-disambiguating names, toggling active states, and removing devices. |
 
 ### Routing Matrix & Real-Time Mixer Pipeline (`matrix.rs`, `mixer.rs`)
 | Type / Function | Description |
@@ -123,6 +131,27 @@ engine.submit_input("mic", AudioChunk::new(vec![0.75], 1, 48000));
 let stream_chunk = engine.process_destination("stream_out");
 ```
 
+### Managing Virtual Audio Cables
+```rust
+use dyno_virtual_audio_mixer_lib::audio::virtual_device::{
+    VirtualCableType, VirtualDeviceManager,
+};
+
+let mut manager = VirtualDeviceManager::new();
+
+// Discover available hardware drivers or fallback to software loopback
+let drivers = manager.detect_available_drivers();
+
+// Create a named virtual cable for Discord
+let discord_cable = manager
+    .create_virtual_device("Discord Aux", VirtualCableType::SoftwareLoopbackEndpoint)
+    .expect("Failed to create virtual cable");
+
+// Check active status or list all devices
+let all_devices = manager.list_devices();
+manager.set_device_active(&discord_cable.id, false).ok();
+```
+
 ## 5. Output Structure & Schemas
 - `AudioChunk.samples`: Interleaved array formatted as `[L0, R0, L1, R1, ...]`.
 - Peak dBFS range: `[-60.0, 0.0]`. Silence clamps directly to `-60.0 dB`.
@@ -154,6 +183,19 @@ let stream_chunk = engine.process_destination("stream_out");
     "destination": { "node_id": "stream_out", "channel_index": 0 },
     "gain": 1.0,
     "muted": false
+  }
+  ```
+- `VirtualDeviceDescriptor`:
+  ```json
+  {
+    "id": "vdev-discord-aux-1",
+    "name": "Discord Aux",
+    "driver_type": "SoftwareLoopbackEndpoint",
+    "render_endpoint_id": "vdev-discord-aux-1-sink",
+    "capture_endpoint_id": "vdev-discord-aux-1-source",
+    "channels": 2,
+    "sample_rate": 48000,
+    "is_active": true
   }
   ```
 
