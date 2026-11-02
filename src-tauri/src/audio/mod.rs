@@ -1,9 +1,10 @@
 //! @file mod.rs
 //! @brief Core audio engine module exposing ring buffers, chunk types, device enumeration,
-//! routing matrix, and mixer engine.
+//! routing matrix, virtual device adapters, and mixer engine.
 //! @details Re-exports audio primitives, sample rate and channel abstractions, lock-free
 //! SPSC ring buffer structures used for low-latency WASAPI routing, CPAL hardware endpoint
-//! discovery, WASAPI process audio session scanners, pin routing matrices, and real-time mixer pipelines.
+//! discovery, WASAPI process audio session scanners, pin routing matrices, virtual audio device
+//! cable managers, and real-time mixer pipelines.
 
 pub mod devices;
 pub mod matrix;
@@ -11,6 +12,7 @@ pub mod mixer;
 pub mod process_scanner;
 pub mod ring_buffer;
 pub mod types;
+pub mod virtual_device;
 
 pub use devices::{list_audio_devices, AudioDeviceDescriptor, AudioDeviceType};
 pub use matrix::{AudioPinId, ConnectionWire, MixerNode, RoutingMatrix};
@@ -23,4 +25,7 @@ pub use ring_buffer::{
 };
 pub use types::{
     calculate_peak_db, AudioChunk, ChannelCount, SampleRate, MAX_PEAK_DB, MIN_PEAK_DB,
+};
+pub use virtual_device::{
+    VirtualCableType, VirtualDeviceDescriptor, VirtualDeviceManager,
 };

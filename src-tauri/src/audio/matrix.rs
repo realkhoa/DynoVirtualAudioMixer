@@ -320,7 +320,7 @@ impl RoutingMatrix {
                 }
 
                 let scaled = sum * dest_node.volume;
-                let final_val = if self.soft_limiter && (scaled > 1.0 || scaled < -1.0) {
+                let final_val = if self.soft_limiter && !(-1.0..=1.0).contains(&scaled) {
                     scaled.tanh()
                 } else {
                     scaled
