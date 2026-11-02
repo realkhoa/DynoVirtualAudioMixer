@@ -105,81 +105,47 @@ export const INITIAL_NODES: Node<AudioNodeData>[] = [
 ];
 
 /**
+ * @brief Helper to generate a default initial patch cable.
+ * @param id Unique edge identifier.
+ * @param source Source node identifier.
+ * @param sourceHandle Source pin handle.
+ * @param target Destination node identifier.
+ * @param targetHandle Destination pin handle.
+ * @param stroke Hex color code for wire glow.
+ * @return Initial Edge definition.
+ */
+function makeSampleEdge(
+  id: string,
+  source: string,
+  sourceHandle: string,
+  target: string,
+  targetHandle: string,
+  stroke: string
+): Edge {
+  return {
+    id,
+    source,
+    sourceHandle,
+    target,
+    targetHandle,
+    type: "glowing",
+    animated: true,
+    style: { stroke, strokeWidth: 2 },
+  };
+}
+
+/**
  * @brief Default initial patch cable connections between sample nodes.
  */
 export const INITIAL_EDGES: Edge[] = [
-  {
-    id: "e-spotify-headphones-L",
-    source: "src-spotify",
-    sourceHandle: "out-0",
-    target: "out-headphones",
-    targetHandle: "in-0",
-    animated: true,
-    style: { stroke: "#38bdf8", strokeWidth: 2 },
-  },
-  {
-    id: "e-spotify-headphones-R",
-    source: "src-spotify",
-    sourceHandle: "out-1",
-    target: "out-headphones",
-    targetHandle: "in-1",
-    animated: true,
-    style: { stroke: "#60a5fa", strokeWidth: 2 },
-  },
-  {
-    id: "e-spotify-stream-L",
-    source: "src-spotify",
-    sourceHandle: "out-0",
-    target: "vdev-stream",
-    targetHandle: "in-0",
-    animated: true,
-    style: { stroke: "#38bdf8", strokeWidth: 2 },
-  },
-  {
-    id: "e-spotify-stream-R",
-    source: "src-spotify",
-    sourceHandle: "out-1",
-    target: "vdev-stream",
-    targetHandle: "in-1",
-    animated: true,
-    style: { stroke: "#60a5fa", strokeWidth: 2 },
-  },
-  {
-    id: "e-mic-stream-L",
-    source: "src-mic",
-    sourceHandle: "out-0",
-    target: "vdev-stream",
-    targetHandle: "in-0",
-    animated: true,
-    style: { stroke: "#34d399", strokeWidth: 2 },
-  },
-  {
-    id: "e-mic-stream-R",
-    source: "src-mic",
-    sourceHandle: "out-1",
-    target: "vdev-stream",
-    targetHandle: "in-1",
-    animated: true,
-    style: { stroke: "#10b981", strokeWidth: 2 },
-  },
-  {
-    id: "e-stream-speakers-L",
-    source: "vdev-stream",
-    sourceHandle: "out-0",
-    target: "out-speakers",
-    targetHandle: "in-0",
-    animated: true,
-    style: { stroke: "#a855f7", strokeWidth: 2 },
-  },
-  {
-    id: "e-stream-speakers-R",
-    source: "vdev-stream",
-    sourceHandle: "out-1",
-    target: "out-speakers",
-    targetHandle: "in-1",
-    animated: true,
-    style: { stroke: "#c084fc", strokeWidth: 2 },
-  },
+  makeSampleEdge("e-spotify-headphones-L", "src-spotify", "out-0", "out-headphones", "in-0", "#38bdf8"),
+  makeSampleEdge("e-spotify-headphones-R", "src-spotify", "out-1", "out-headphones", "in-1", "#60a5fa"),
+  makeSampleEdge("e-spotify-stream-L", "src-spotify", "out-0", "vdev-stream", "in-0", "#38bdf8"),
+  makeSampleEdge("e-spotify-stream-R", "src-spotify", "out-1", "vdev-stream", "in-1", "#60a5fa"),
+  makeSampleEdge("e-mic-stream-L", "src-mic", "out-0", "vdev-stream", "in-0", "#34d399"),
+  makeSampleEdge("e-mic-stream-R", "src-mic", "out-1", "vdev-stream", "in-1", "#10b981"),
+  makeSampleEdge("e-stream-speakers-L", "vdev-stream", "out-0", "out-speakers", "in-0", "#a855f7"),
+  makeSampleEdge("e-stream-speakers-R", "vdev-stream", "out-1", "out-speakers", "in-1", "#c084fc"),
 ];
 
 /**

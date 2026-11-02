@@ -32,3 +32,12 @@ body {
   padding: 0;
   box-sizing: border-box;
 }
+
+@keyframes dynoDash {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}

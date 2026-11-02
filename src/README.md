@@ -7,7 +7,8 @@ The Dyno Virtual Audio Mixer frontend provides a high-performance, dark-themed i
 - **Interactive Patchbay Canvas**: Zoom, pan, drag-and-drop node organization, mini-map preview, and dark dot grid canvas.
 - **Glassmorphic Hardware Cards**: Loopback-inspired dark aesthetic (`bg-slate-900/95 border-slate-700/60 rounded-xl shadow-xl backdrop-blur-md`).
 - **Real-Time LED VU Meters**: Dual stereo channel meters with 60 FPS peak decibel monitoring (-60 dBFS to 0 dBFS) with green/yellow/red gradient and clip indicators.
-- **Glowing Patch Cords**: Animated, channel-color-coded SVG wires connecting Left (sky blue) and Right (indigo) channel pins.
+- **Glowing Bezier Patch Cords (`GlowingEdge`)**: Neon-glow Bezier curves with animated dash strokes representing active audio signal flow (> -50 dBFS) and click-to-disconnect controls.
+- **Smart Stereo Auto-Pairing (`useAudioGraph`)**: Connecting a Left channel pin (`out-0` -> `in-0`) automatically discovers and wires the corresponding Right channel twin (`out-1` -> `in-1`) when both nodes support stereo audio.
 - **Live Gain & Mute Controls**: Non-destructive volume faders (0% to 150%) and instant mute toggle switches communicating to the WASAPI mixer engine.
 - **Dynamic Node Management**: Modals to scan and inject applications (`get_running_apps`), hardware devices (`get_devices`), and provision new virtual cables (`create_virtual_device`).
 
@@ -34,7 +35,20 @@ The Dyno Virtual Audio Mixer frontend provides a high-performance, dark-themed i
 | `OutputNode` | Speaker / Headphone Destination | `in-0` (L), `in-1` (R) | None | Headphones/Speaker icon, live VU meter, volume slider, mute toggle, delete button |
 | `VirtualDeviceNode` | Pass-through Virtual Cable | `in-0` (L), `in-1` (R) | `out-0` (L), `out-1` (R) | Driver badge, pass-through VU meter, volume slider, mute toggle, delete button |
 
-### 3.2 VU Meter Component (`src/components/nodes/VuMeter.tsx`)
+### 3.2 Custom Glowing Edge Component (`src/components/edges/GlowingEdge.tsx`)
+Renders hardware patch cords with dual-layer SVG paths:
+- **Neon Glow Underlay**: Ambient blurred path (`filter: blur(4px)`) colored cyan (`#38bdf8`) for Left channels and indigo (`#818cf8`) for Right channels.
+- **Core Cable**: Crisp solid or animated dashed stroke pulsing at 1.0s interval when active audio signal exceeds `-50.0 dBFS`.
+- **Interactive Disconnect**: Mid-point pill button rendered via `EdgeLabelRenderer` providing instant one-click cable disconnection.
+
+### 3.3 Patchbay State Hook (`src/hooks/useAudioGraph.ts`)
+Encapsulates React Flow graph state, backend synchronization, and smart auto-pairing:
+- `onConnect(connection)`: Checks if `sourceHandle === "out-0"` and `targetHandle === "in-0"`. If both endpoints support $\ge 2$ channels and no twin wire exists, automatically generates twin Right-channel patch cord (`out-1` -> `in-1`).
+- `onEdgesChange`: Tracks edge modifications and auto-syncs topology removals to the backend WASAPI matrix.
+- `syncGraphToBackend`: Transforms nodes and edges into `AudioGraphDto` and dispatches to Tauri IPC command `update_routing_graph`.
+- `updateNodeParam`: Real-time updates for volume sliders and mute toggles dispatched to `set_node_volume`.
+
+### 3.4 VU Meter Component (`src/components/nodes/VuMeter.tsx`)
 Converts decibels (-60 dBFS to 0 dBFS) to a normalized percentage:
 $$\text{percent} = \text{clamp}\left(\frac{\text{dB} + 60}{60} \times 100, 0, 100\right)$$
 
@@ -43,7 +57,7 @@ $$\text{percent} = \text{clamp}\left(\frac{\text{dB} + 60}{60} \times 100, 0, 10
 - **Red Zone**: Above `-3 dBFS` (95% to 100% width)
 - **Clip Indicator**: Latches red LED indicator when peak amplitude reaches $\ge -0.5\text{ dBFS}$.
 
-### 3.3 TopBar Header & Modals (`src/components/TopBar.tsx`, `src/components/modals/`)
+### 3.5 TopBar Header & Modals (`src/components/TopBar.tsx`, `src/components/modals/`)
 - `AddSourceModal`: Scans running processes via `get_running_apps` or hardware inputs via `get_devices`.
 - `CreateVirtualModal`: Configures device name and driver type (Dyno Software Loopback, VB-Cable, VAC) via `create_virtual_device`.
 - `AddOutputModal`: Enumerates hardware playback endpoints via `get_devices`.
@@ -94,9 +108,15 @@ src/
 ├── types/
 │   ├── audio.ts               # Domain types, DTO contracts, and React Flow payload interfaces
 │   └── audio.test.ts          # Type contract verification tests
+├── hooks/
+│   ├── useAudioGraph.ts       # Patchbay state, smart stereo auto-pairing, and IPC sync
+│   └── useAudioGraph.test.ts  # Smart stereo pairing and graph logic tests
 ├── components/
 │   ├── TopBar.tsx             # Application header with real-time telemetry and modal triggers
 │   ├── GraphCanvas.tsx        # React Flow canvas container with mini-map and controls
+│   ├── edges/
+│   │   ├── GlowingEdge.tsx    # Neon Bezier patch cord with animated signal pulse
+│   │   └── GlowingEdge.test.ts
 │   ├── canvas/
 │   │   ├── initialGraph.ts    # Default sample patchbay topology
 │   │   ├── initialGraph.test.ts
@@ -129,4 +149,5 @@ src/
 | **Canvas appears blank / black** | Parent container does not have an explicit height and width. | Ensure the canvas container has `relative w-full h-full overflow-hidden`. |
 | **No VU meter movement in browser** | Running in standalone Vite preview outside the Tauri window. | The built-in fallback oscillator automatically activates and simulates organic audio bounce. |
 | **Wires not snapping to handles** | React Flow handle IDs mismatched. | Source handles are keyed `out-0` (Left) and `out-1` (Right); destination handles are `in-0` and `in-1`. |
+| **Stereo twin wire not auto-connecting** | Destination or source node has fewer than 2 channels, or handle is not Left (`out-0` / `in-0`). | Smart stereo auto-pairing only activates when connecting Left-to-Left pins between stereo-capable nodes. |
 | **TypeScript error TS2307 `bun:test`** | Missing `bun-types` in `tsconfig.json`. | Ensure `"types": ["bun-types"]` is configured in `tsconfig.json`. |
