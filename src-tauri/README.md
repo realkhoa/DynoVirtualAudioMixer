@@ -33,6 +33,10 @@ It provides:
 | `update_routing_graph` | `graph: AudioGraphDto` | `Result<bool, String>` | Replaces the active routing matrix with the updated graph |
 | `set_node_volume` | `node_id: String`, `volume: f32`, `muted: bool` | `Result<bool, String>` | Updates gain and mute state for an individual mixer node |
 | `start_meter_stream` | `app: AppHandle` | `()` | Spawns background ~16ms loop emitting `audio-meter-tick` events |
+| `save_profile` | `preset: ProfilePreset` | `Result<String, String>` | Persists a complete routing graph preset to JSON on disk |
+| `load_profile` | `name: String` | `Result<ProfilePreset, String>` | Loads and deserializes a saved routing profile preset |
+| `list_profiles` | *none* | `Result<Vec<String>, String>` | Enumerates all available profile preset names in storage |
+| `delete_profile` | `name: String` | `Result<bool, String>` | Deletes a profile preset file from local storage |
 
 ## 4. Real-Time Telemetry Event Schema (`audio-meter-tick`)
 
@@ -75,8 +79,10 @@ cargo clippy --manifest-path src-tauri/Cargo.toml
 ## 6. Output Structure & Schema
 
 - `src/main.rs`: Windows executable entry point (hides console window in release).
-- `src/lib.rs`: Library entry point configuring `tauri::Builder`, state management, and invoke handlers.
-- `src/commands.rs`: IPC command handlers, DTOs (`AudioGraphDto`, `NodeDto`, `ConnectionDto`, `MeterUpdateDto`), and `AppState`.
+- `src/lib.rs`: Library entry point configuring `tauri::Builder`, state management, invoke handlers, system tray, and hide-on-close event interception.
+- `src/presets.rs`: Profile preset manager for JSON serialization and persistence of routing graph topologies.
+- `src/tray.rs`: Windows notification tray icon integration, tray menu actions, and click handlers.
+- `src/commands/`: IPC command handlers, DTOs (`AudioGraphDto`, `NodeDto`, `ConnectionDto`, `MeterUpdateDto`), and `AppState`.
 - `src/audio/`: Core WASAPI audio processing engine, lock-free ring buffers, and device adapters.
 - `tauri.conf.json`: Tauri v2 configuration (window size, title, devUrl, identifier).
 - `capabilities/default.json`: Windows permissions and capability declarations.

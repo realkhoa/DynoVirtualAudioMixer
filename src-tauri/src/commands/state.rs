@@ -7,6 +7,7 @@ use crate::audio::matrix::RoutingMatrix;
 use crate::audio::types::MIN_PEAK_DB;
 use crate::audio::virtual_device::VirtualDeviceManager;
 use crate::commands::dto::{MeterUpdateDto, NodeMeterDto};
+use crate::presets::ProfileManager;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -20,6 +21,8 @@ pub struct AppState {
     pub virtual_devices: Arc<RwLock<VirtualDeviceManager>>,
     /// @brief Atomic flag indicating whether the audio processing and telemetry engine is running.
     pub is_running: Arc<AtomicBool>,
+    /// @brief Thread-safe handle to the preset profiles manager.
+    pub profiles: Arc<RwLock<ProfileManager>>,
 }
 
 impl Default for AppState {
@@ -38,6 +41,7 @@ impl AppState {
             matrix: Arc::new(RwLock::new(RoutingMatrix::new())),
             virtual_devices: Arc::new(RwLock::new(VirtualDeviceManager::new())),
             is_running: Arc::new(AtomicBool::new(true)),
+            profiles: Arc::new(RwLock::new(ProfileManager::default())),
         }
     }
 
@@ -53,7 +57,36 @@ impl AppState {
             matrix: Arc::new(RwLock::new(matrix)),
             virtual_devices: Arc::new(RwLock::new(virtual_devices)),
             is_running: Arc::new(AtomicBool::new(true)),
+            profiles: Arc::new(RwLock::new(ProfileManager::default())),
         }
+    }
+
+    /// @brief Sets a custom ProfileManager for this AppState instance.
+    /// @param manager Initialized ProfileManager with custom base directory.
+    /// @return Modified AppState instance.
+    pub fn with_profile_manager(self, manager: ProfileManager) -> Self {
+        Self {
+            matrix: self.matrix,
+            virtual_devices: self.virtual_devices,
+            is_running: self.is_running,
+            profiles: Arc::new(RwLock::new(manager)),
+        }
+    }
+
+    /// @brief Acquires an exclusive write lock on the underlying profile manager.
+    /// @return `Ok(RwLockWriteGuard<ProfileManager>)` on success, or `Err(String)` on lock failure.
+    pub fn write_profiles(&self) -> Result<RwLockWriteGuard<'_, ProfileManager>, String> {
+        self.profiles
+            .write()
+            .map_err(|e| format!("Failed to acquire write lock on profile manager: {e}"))
+    }
+
+    /// @brief Acquires a shared read lock on the underlying profile manager.
+    /// @return `Ok(RwLockReadGuard<ProfileManager>)` on success, or `Err(String)` on lock failure.
+    pub fn read_profiles(&self) -> Result<RwLockReadGuard<'_, ProfileManager>, String> {
+        self.profiles
+            .read()
+            .map_err(|e| format!("Failed to acquire read lock on profile manager: {e}"))
     }
 
     /// @brief Acquires an exclusive write lock on the underlying routing matrix.

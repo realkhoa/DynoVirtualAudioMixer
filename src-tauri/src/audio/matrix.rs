@@ -185,6 +185,12 @@ impl RoutingMatrix {
         &self.nodes
     }
 
+    /// @brief Returns a mutable map of all registered mixer nodes.
+    /// @return Mutable reference to HashMap containing nodes.
+    pub fn nodes_mut(&mut self) -> &mut HashMap<String, MixerNode> {
+        &mut self.nodes
+    }
+
     /// @brief Connects two pins by registering a connection wire.
     /// @param wire ConnectionWire instance to insert or update.
     pub fn connect(&mut self, wire: ConnectionWire) {

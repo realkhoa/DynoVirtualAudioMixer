@@ -8,6 +8,7 @@ use crate::audio::process_scanner::{list_audio_processes, AudioProcessDescriptor
 use crate::audio::virtual_device::{VirtualCableType, VirtualDeviceDescriptor};
 use crate::commands::dto::AudioGraphDto;
 use crate::commands::state::AppState;
+use crate::presets::ProfilePreset;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -135,4 +136,54 @@ pub fn start_meter_stream(app: AppHandle) {
             }
         }
     });
+}
+
+/// @brief Tauri command to save a routing graph profile preset to disk.
+/// @param state Tauri application state container.
+/// @param preset The ProfilePreset to persist.
+/// @return `Ok(String)` containing the saved preset name, or `Err(String)` describing the failure.
+#[tauri::command]
+pub fn save_profile(
+    state: State<'_, AppState>,
+    preset: ProfilePreset,
+) -> Result<String, String> {
+    let profiles = state.read_profiles()?;
+    profiles.save_profile(&preset)
+}
+
+/// @brief Tauri command to load a routing graph profile preset by name or identifier.
+/// @param state Tauri application state container.
+/// @param name Friendly profile name or unique ID to load.
+/// @return `Ok(ProfilePreset)` on successful deserialization, or `Err(String)` if not found or corrupted.
+#[tauri::command]
+pub fn load_profile(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<ProfilePreset, String> {
+    let profiles = state.read_profiles()?;
+    profiles.load_profile(&name)
+}
+
+/// @brief Tauri command to list all available routing graph profile presets.
+/// @param state Tauri application state container.
+/// @return `Ok(Vec<String>)` containing sorted list of profile names, or `Err(String)` on filesystem error.
+#[tauri::command]
+pub fn list_profiles(
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let profiles = state.read_profiles()?;
+    profiles.list_profiles()
+}
+
+/// @brief Tauri command to delete a routing graph profile preset by name or identifier.
+/// @param state Tauri application state container.
+/// @param name Friendly profile name or unique ID to delete.
+/// @return `Ok(true)` if deleted, `Ok(false)` if not found, or `Err(String)` on error.
+#[tauri::command]
+pub fn delete_profile(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<bool, String> {
+    let profiles = state.read_profiles()?;
+    profiles.delete_profile(&name)
 }
