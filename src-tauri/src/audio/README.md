@@ -1,7 +1,7 @@
-# Core Audio Engine - Lock-Free Ring Buffer, Device Enumeration & Process Audio Detection
+# Core Audio Engine - Lock-Free Ring Buffer, Device Enumeration, Routing Matrix & Real-Time Mixer Pipeline
 
 ## 1. Overview & Purpose
-This module provides low-latency, real-time audio primitives, device discovery, and active process audio session detection for the Dyno Virtual Audio Mixer. It bridges audio capture threads (WASAPI capture callbacks) and playback/mixing threads without mutex contention, memory reallocation, or priority inversion, while enabling dynamic discovery of hardware endpoints and software audio sessions.
+This module provides low-latency, real-time audio primitives, device discovery, active process audio session detection, pin-level routing matrix graph evaluation, and multi-source soft-clipping audio mixing for the Dyno Virtual Audio Mixer. It bridges audio capture threads (WASAPI capture callbacks) and playback/mixing threads without mutex contention, memory reallocation, or priority inversion, while enabling dynamic discovery of hardware endpoints, software audio sessions, and arbitrary pin-to-pin audio patching.
 
 Key responsibilities:
 - **`AudioChunk`**: Interleaved 32-bit floating-point PCM audio chunk with channel count and sample rate metadata.
@@ -11,12 +11,15 @@ Key responsibilities:
 - **Soft Clipping / Limiter**: Hyperbolic tangent (`tanh`) saturation to smoothly protect against hard digital clipping during multi-track summing.
 - **`list_audio_devices()`**: Enumerates all physical and virtual input and output audio endpoints via CPAL/WASAPI, extracting channels, sample rates, and default flags.
 - **`list_audio_processes()`**: Scans active Windows WASAPI audio sessions, identifies running applications producing or capable of producing audio (Spotify, Discord, browsers, games), and associates them with PIDs and window titles.
+- **`AudioPinId` / `ConnectionWire` / `MixerNode`**: Topological primitives for graph-based audio patchbays with node volumes, wire gains, and granular muting.
+- **`RoutingMatrix`**: Arbitrary multichannel routing matrix handling 1-to-1 direct routing, stereo downmixing, mono channel splitting, volume scaling, muting, and smooth soft saturation.
+- **`AudioMixerEngine`**: Central mixing pipeline coordinating staged source buffers and matrix evaluation to produce destination render frames.
 
 ## 2. Prerequisites & Dependencies
 - **Rust Edition**: 2021
 - **Crate Dependencies**:
   - `rtrb = "0.3"`: Real-time safe, wait-free Single-Producer Single-Consumer ring buffer.
-  - `serde = "1"`: Serialization/deserialization for audio chunk and device metadata.
+  - `serde = "1"`: Serialization/deserialization for audio chunk, wire, node, and device metadata.
   - `cpal = "0.15"`: Cross-platform audio I/O library for physical and virtual device querying.
   - `windows = "0.58"`: Direct Windows Win32 API access for WASAPI audio session enumeration (`IMMDeviceEnumerator`, `IAudioSessionManager2`, `IAudioSessionControl2`), process querying, and window titles.
 
@@ -40,19 +43,24 @@ Key responsibilities:
 | `AudioConsumer` | `pop_samples(&mut [f32]) -> usize`, `pop_chunk(frames, ch, rate) -> Option<AudioChunk>`, `slots()`, `is_empty()` | Consumer endpoint safe to move to mixer thread. |
 | `ChunkRingBuffer` | `new(capacity)`, `split()`, `push(chunk)`, `pop() -> Option<AudioChunk>` | High-level ring buffer for discrete `AudioChunk`s. |
 
-### Device Enumeration (`devices.rs`)
+### Device Enumeration & Process Audio Detection (`devices.rs`, `process_scanner.rs`)
 | Type / Function | Description |
 |---|---|
 | `AudioDeviceType` | Enum (`Input`, `Output`, `Virtual`) with helper predicate methods (`is_input()`, `is_output()`, `is_virtual()`). |
 | `AudioDeviceDescriptor` | Struct containing `id: String`, `name: String`, `device_type: AudioDeviceType`, `channels: u16`, `sample_rate: u32`, `is_default: bool`. |
 | `list_audio_devices() -> Result<Vec<AudioDeviceDescriptor>, String>` | Scans host system for audio capture and render endpoints using CPAL. |
-
-### Process Audio Detection (`process_scanner.rs`)
-| Type / Function | Description |
-|---|---|
 | `AudioProcessDescriptor` | Struct containing `pid: u32`, `name: String`, `title: String`, `has_audio_session: bool`. |
 | `list_audio_processes() -> Result<Vec<AudioProcessDescriptor>, String>` | Scans WASAPI active audio sessions and application windows to discover audio-producing processes. |
 | `is_audio_candidate_application(name: &str) -> bool` | Heuristic predicate identifying well-known audio/media applications (Spotify, Discord, Chrome, etc.). |
+
+### Routing Matrix & Real-Time Mixer Pipeline (`matrix.rs`, `mixer.rs`)
+| Type / Function | Description |
+|---|---|
+| `AudioPinId` | Identifies a specific channel pin (`node_id: String`, `channel_index: u16`). |
+| `ConnectionWire` | Represents virtual audio wire (`id: String`, `source: AudioPinId`, `destination: AudioPinId`, `gain: f32`, `muted: bool`). |
+| `MixerNode` | Represents audio source, sub-mix, or output node (`id: String`, `name: String`, `volume: f32`, `muted: bool`, `input_channels: u16`, `output_channels: u16`). |
+| `RoutingMatrix` | Graph manager with `add_node`, `remove_node`, `connect`, `disconnect`, `process_frame`. Handles gain scaling, muting, channel mapping, and soft saturation. |
+| `AudioMixerEngine` | Pipeline coordinating input staging buffers and routing matrix evaluation (`submit_input`, `process_destination`, `render_all`, `clear_inputs`). |
 
 ## 4. Usage Examples
 
@@ -77,29 +85,42 @@ thread::spawn(move || {
 });
 ```
 
-### Enumerating Audio Devices
+### Pin-Level Routing Matrix Evaluation
 ```rust
-use dyno_virtual_audio_mixer_lib::audio::devices::list_audio_devices;
+use dyno_virtual_audio_mixer_lib::audio::matrix::{AudioPinId, ConnectionWire, MixerNode, RoutingMatrix};
+use dyno_virtual_audio_mixer_lib::audio::types::AudioChunk;
+use std::collections::HashMap;
 
-let devices = list_audio_devices().expect("Failed to enumerate audio devices");
-for dev in devices {
-    println!(
-        "[{:?}] {} (channels={}, rate={}Hz, default={})",
-        dev.device_type, dev.name, dev.channels, dev.sample_rate, dev.is_default
-    );
-}
+let mut matrix = RoutingMatrix::new();
+matrix.add_node(MixerNode::new("spotify", "Spotify", 0, 2).with_volume(1.0));
+matrix.add_node(MixerNode::new("speakers", "Master Speakers", 2, 2).with_volume(0.8));
+
+// Connect stereo channels L->L and R->R
+matrix.connect(ConnectionWire::new("wire_l", AudioPinId::left("spotify"), AudioPinId::left("speakers"), 1.0));
+matrix.connect(ConnectionWire::new("wire_r", AudioPinId::right("spotify"), AudioPinId::right("speakers"), 1.0));
+
+let mut inputs = HashMap::new();
+inputs.insert("spotify".to_string(), AudioChunk::new(vec![0.5, 0.5], 2, 48000));
+
+let rendered_chunk = matrix.process_frame(&inputs, "speakers");
 ```
 
-### Detecting Active Audio Processes
+### AudioMixerEngine Pipeline
 ```rust
-use dyno_virtual_audio_mixer_lib::audio::process_scanner::list_audio_processes;
+use dyno_virtual_audio_mixer_lib::audio::mixer::AudioMixerEngine;
+use dyno_virtual_audio_mixer_lib::audio::matrix::{AudioPinId, ConnectionWire, MixerNode};
+use dyno_virtual_audio_mixer_lib::audio::types::AudioChunk;
 
-let processes = list_audio_processes().expect("Failed to scan audio processes");
-for proc in processes {
-    if proc.has_audio_session {
-        println!("Active Audio Session: PID {} - {} ({})", proc.pid, proc.name, proc.title);
-    }
-}
+let mut engine = AudioMixerEngine::new(48000);
+engine.add_node(MixerNode::new("mic", "Microphone", 0, 1));
+engine.add_node(MixerNode::new("stream_out", "Stream Bus", 2, 2));
+
+// Split mono microphone to both stereo channels
+engine.connect(ConnectionWire::new("m_l", AudioPinId::new("mic", 0), AudioPinId::left("stream_out"), 1.0));
+engine.connect(ConnectionWire::new("m_r", AudioPinId::new("mic", 0), AudioPinId::right("stream_out"), 1.0));
+
+engine.submit_input("mic", AudioChunk::new(vec![0.75], 1, 48000));
+let stream_chunk = engine.process_destination("stream_out");
 ```
 
 ## 5. Output Structure & Schemas
@@ -125,9 +146,20 @@ for proc in processes {
     "has_audio_session": true
   }
   ```
+- `ConnectionWire`:
+  ```json
+  {
+    "id": "wire_01",
+    "source": { "node_id": "mic", "channel_index": 0 },
+    "destination": { "node_id": "stream_out", "channel_index": 0 },
+    "gain": 1.0,
+    "muted": false
+  }
+  ```
 
 ## 6. Troubleshooting & Edge Cases
 - **Buffer Full**: `push_samples` returns the count of samples actually written without blocking. If count < slice length, audio capture overflow occurred. The caller should increment an underrun/overflow counter and avoid sleeping or blocking the audio thread.
 - **Buffer Empty**: `pop_samples` returns the count of samples read. If insufficient samples are available, fill remaining frames with silence (0.0) to prevent audio stutter.
-- **Headless Environments / Missing Hardware**: In containers or CI environments without physical audio hardware, `list_audio_devices()` returns an empty vector without panicking.
-- **Permissions / Protected System Processes**: Protected Windows services (e.g. `audiodg.exe` or SYSTEM processes) may refuse `OpenProcess` calls. `get_process_name_by_pid` falls back to placeholder names like `"Process-<PID>"` or `"System"` rather than failing.
+- **Digital Clipping Prevention**: When multiple loud audio sources sum above `1.0` (0 dBFS), the routing matrix's soft limiter applies hyperbolic tangent (`tanh`) compression, preventing harsh digital square-wave clipping while preserving dynamics below full scale.
+- **Orphaned Wires on Node Removal**: Calling `RoutingMatrix::remove_node()` automatically deletes all wires connected to the target node as either source or destination, preventing stale or dangling pointer bugs in graph routing.
+- **Missing Source Inputs**: If a source node has no active chunk submitted during `process_frame()`, it is treated as digital silence (0.0) without interrupting other summed signals.
