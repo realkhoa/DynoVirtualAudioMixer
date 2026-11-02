@@ -1,0 +1,19 @@
+[package]
+name = "dyno-virtual-audio-mixer"
+version = "0.1.0"
+description = "Dyno Virtual Audio Mixer - Lightweight WASAPI Audio Patchbay"
+authors = ["Dyno Team"]
+edition = "2021"
+
+[lib]
+name = "dyno_virtual_audio_mixer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", default-features = false }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }

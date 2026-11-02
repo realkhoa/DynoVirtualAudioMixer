@@ -1,0 +1,16 @@
+# Rust build artifacts
+/src-tauri/target/
+target/
+
+# Node / Bun dependencies and builds
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Caches and OS files
+.turbo/
+.cache/
+.DS_Store
+Thumbs.db
+*.log
