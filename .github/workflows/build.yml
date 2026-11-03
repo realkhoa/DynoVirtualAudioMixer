@@ -81,31 +81,15 @@ jobs:
 
       - name: Publish or Update GitHub Release
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: powershell
-        run: |
-          $tag = if ("${{ github.ref }}".StartsWith("refs/tags/v")) { "${{ github.ref_name }}" } else { "latest" }
-          $title = if ("${{ github.ref }}".StartsWith("refs/tags/v")) { "${{ github.ref_name }} - Dyno Virtual Audio Mixer" } else { "Dyno Virtual Audio Mixer (Latest Build)" }
-          $exePath = "src-tauri/target/release/dyno-virtual-audio-mixer.exe"
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'Dyno Virtual Audio Mixer (Latest Build)' }}
+          body: |
+            ## Dyno Virtual Audio Mixer - Latest Windows Release
+            Automated build from commit `${{ github.sha }}` on branch `${{ github.ref_name }}`.
 
-          if (!(Test-Path $exePath)) {
-            Write-Error "Release executable not found at $exePath"
-            exit 1
-          }
-
-          Write-Host "Publishing artifact to GitHub Release ($tag)..."
-          $releaseJson = gh release view $tag --json tagName 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "Updating existing release $tag..."
-            gh release upload $tag $exePath --clobber
-          } else {
-            Write-Host "Creating new release $tag..."
-            gh release create $tag $exePath --title "$title" --notes "Automated release build from commit ${{ github.sha }} on ${{ github.ref_name }}." --latest
-          }
-
-          # If building from main, also sync artifact to existing v0.1.0 release for convenient access
-          if ($tag -eq "latest") {
-            Write-Host "Syncing artifact to v0.1.0 release..."
-            gh release upload v0.1.0 $exePath --clobber 2>$null
-          }
+            ### Downloads:
+            - **[dyno-virtual-audio-mixer.exe](https://github.com/realkhoa/DynoVirtualAudioMixer/releases/download/latest/dyno-virtual-audio-mixer.exe)** (Standalone Windows x64 executable)
+          files: src-tauri/target/release/dyno-virtual-audio-mixer.exe
+          make_latest: true
