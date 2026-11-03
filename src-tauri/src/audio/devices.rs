@@ -123,8 +123,14 @@ fn slugify(name: &str) -> String {
 /// @details Queries the system audio host (WASAPI on Windows, CoreAudio on macOS, ALSA on Linux)
 /// using CPAL. Identifies default input and output endpoints, retrieves native channel
 /// counts and sample rates, and handles headless or missing hardware environments gracefully.
+/// In headless CI runners (e.g. GitHub Actions) without audio cards, returns an empty vector
+/// immediately to prevent OS-level SEH segmentation faults.
 /// @return `Ok(Vec<AudioDeviceDescriptor>)` containing discovered endpoints, or `Err(String)` on failure.
 pub fn list_audio_devices() -> Result<Vec<AudioDeviceDescriptor>, String> {
+    if std::env::var("CI").is_ok() || std::env::var("GITHUB_ACTIONS").is_ok() {
+        return Ok(Vec::new());
+    }
+
     let host = match std::panic::catch_unwind(cpal::default_host) {
         Ok(h) => h,
         Err(_) => return Ok(Vec::new()),
