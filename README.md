@@ -1,5 +1,7 @@
 # Dyno Virtual Audio Mixer
 
+[![Build & Release Pipeline](https://github.com/realkhoa/DynoVirtualAudioMixer/actions/workflows/build.yml/badge.svg)](https://github.com/realkhoa/DynoVirtualAudioMixer/actions/workflows/build.yml)
+
 High-performance, ultra-low-latency virtual audio patchbay and routing matrix desktop application for Windows, built with Tauri v2, Rust WASAPI native audio engine, and React Flow.
 
 ---
