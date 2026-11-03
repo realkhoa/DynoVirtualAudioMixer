@@ -125,32 +125,58 @@ fn slugify(name: &str) -> String {
 /// counts and sample rates, and handles headless or missing hardware environments gracefully.
 /// @return `Ok(Vec<AudioDeviceDescriptor>)` containing discovered endpoints, or `Err(String)` on failure.
 pub fn list_audio_devices() -> Result<Vec<AudioDeviceDescriptor>, String> {
-    let host = cpal::default_host();
+    let host = match std::panic::catch_unwind(cpal::default_host) {
+        Ok(h) => h,
+        Err(_) => return Ok(Vec::new()),
+    };
     let mut descriptors = Vec::new();
 
-    // Query default device names for matching
-    let default_input_name = host.default_input_device().and_then(|d| d.name().ok());
-    let default_output_name = host.default_output_device().and_then(|d| d.name().ok());
+    // Query default device names for matching safely
+    let default_input_name = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        host.default_input_device().and_then(|d| d.name().ok())
+    }))
+    .ok()
+    .flatten();
+
+    let default_output_name = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        host.default_output_device().and_then(|d| d.name().ok())
+    }))
+    .ok()
+    .flatten();
 
     // Enumerate physical and virtual input capture devices
-    if let Ok(input_devices) = host.input_devices() {
+    let input_devices_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        host.input_devices().ok()
+    }))
+    .ok()
+    .flatten();
+
+    if let Some(input_devices) = input_devices_res {
         for (index, device) in input_devices.enumerate() {
-            if let Ok(name) = device.name() {
+            let name_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| device.name().ok()))
+                .ok()
+                .flatten();
+
+            if let Some(name) = name_res {
                 let is_default = default_input_name.as_deref() == Some(&name);
 
                 // Attempt to retrieve default config, falling back to supported ranges or stereo 48kHz
-                let (channels, sample_rate) = device
-                    .default_input_config()
-                    .map(|cfg| (cfg.channels(), cfg.sample_rate().0))
-                    .ok()
-                    .or_else(|| {
-                        device
-                            .supported_input_configs()
-                            .ok()
-                            .and_then(|mut iter| iter.next())
-                            .map(|cfg| (cfg.channels(), cfg.max_sample_rate().0))
-                    })
-                    .unwrap_or((2, 48000));
+                let (channels, sample_rate) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    device
+                        .default_input_config()
+                        .map(|cfg| (cfg.channels(), cfg.sample_rate().0))
+                        .ok()
+                        .or_else(|| {
+                            device
+                                .supported_input_configs()
+                                .ok()
+                                .and_then(|mut iter| iter.next())
+                                .map(|cfg| (cfg.channels(), cfg.max_sample_rate().0))
+                        })
+                }))
+                .ok()
+                .flatten()
+                .unwrap_or((2, 48000));
 
                 let is_virtual = name.to_lowercase().contains("dyno virtual");
                 let device_type = if is_virtual {
@@ -175,24 +201,38 @@ pub fn list_audio_devices() -> Result<Vec<AudioDeviceDescriptor>, String> {
     }
 
     // Enumerate physical and virtual output playback devices
-    if let Ok(output_devices) = host.output_devices() {
+    let output_devices_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        host.output_devices().ok()
+    }))
+    .ok()
+    .flatten();
+
+    if let Some(output_devices) = output_devices_res {
         for (index, device) in output_devices.enumerate() {
-            if let Ok(name) = device.name() {
+            let name_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| device.name().ok()))
+                .ok()
+                .flatten();
+
+            if let Some(name) = name_res {
                 let is_default = default_output_name.as_deref() == Some(&name);
 
                 // Attempt to retrieve default config, falling back to supported ranges or stereo 48kHz
-                let (channels, sample_rate) = device
-                    .default_output_config()
-                    .map(|cfg| (cfg.channels(), cfg.sample_rate().0))
-                    .ok()
-                    .or_else(|| {
-                        device
-                            .supported_output_configs()
-                            .ok()
-                            .and_then(|mut iter| iter.next())
-                            .map(|cfg| (cfg.channels(), cfg.max_sample_rate().0))
-                    })
-                    .unwrap_or((2, 48000));
+                let (channels, sample_rate) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    device
+                        .default_output_config()
+                        .map(|cfg| (cfg.channels(), cfg.sample_rate().0))
+                        .ok()
+                        .or_else(|| {
+                            device
+                                .supported_output_configs()
+                                .ok()
+                                .and_then(|mut iter| iter.next())
+                                .map(|cfg| (cfg.channels(), cfg.max_sample_rate().0))
+                        })
+                }))
+                .ok()
+                .flatten()
+                .unwrap_or((2, 48000));
 
                 let is_virtual = name.to_lowercase().contains("dyno virtual");
                 let device_type = if is_virtual {

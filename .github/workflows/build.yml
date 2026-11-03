@@ -58,8 +58,15 @@ jobs:
       - name: Build Frontend Production Assets
         run: bun run build
 
+      - name: Start Windows Audio Service
+        shell: powershell
+        run: |
+          Set-Service -Name Audiosrv -StartupType Automatic -ErrorAction SilentlyContinue
+          Start-Service -Name Audiosrv -ErrorAction SilentlyContinue
+          Get-Service -Name Audiosrv -ErrorAction SilentlyContinue
+
       - name: Run Backend Audio Engine Tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --verbose
+        run: cargo test --manifest-path src-tauri/Cargo.toml --verbose -- --test-threads=1
 
       - name: Build Tauri Desktop Application
         run: bun x @tauri-apps/cli build --no-bundle
