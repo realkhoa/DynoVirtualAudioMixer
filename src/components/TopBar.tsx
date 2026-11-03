@@ -5,9 +5,9 @@
  * rendering responsive modal dialogs to inject new nodes into the React Flow patchbay graph.
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Radio, Plus, Cpu, Activity } from "lucide-react";
+import { Radio, Plus, Trash2, RotateCcw, Cpu, Activity } from "lucide-react";
 import type {
   AudioDeviceDescriptor,
   AudioProcessDescriptor,
@@ -16,54 +16,6 @@ import type {
 import { AddSourceModal } from "./modals/AddSourceModal";
 import { CreateVirtualModal } from "./modals/CreateVirtualModal";
 import { AddOutputModal } from "./modals/AddOutputModal";
-
-/**
- * @brief Fallback mock application sessions used when running outside the Tauri runtime.
- */
-const FALLBACK_APPS: AudioProcessDescriptor[] = [
-  { pid: 1420, name: "spotify.exe", title: "Spotify Free", has_audio_session: true },
-  { pid: 3824, name: "discord.exe", title: "Discord - Voice Channel", has_audio_session: true },
-  { pid: 8192, name: "chrome.exe", title: "YouTube - Chrome", has_audio_session: true },
-  { pid: 5120, name: "game.exe", title: "Cyberpunk 2077", has_audio_session: true },
-];
-
-/**
- * @brief Fallback mock audio devices used when running outside the Tauri runtime.
- */
-const FALLBACK_DEVICES: AudioDeviceDescriptor[] = [
-  {
-    id: "hw-in-mic-1",
-    name: "Microphone (Realtek High Definition Audio)",
-    device_type: "Input",
-    channels: 2,
-    sample_rate: 48000,
-    is_default: true,
-  },
-  {
-    id: "hw-in-shure-2",
-    name: "Shure MV7+ USB Podcasting Mic",
-    device_type: "Input",
-    channels: 1,
-    sample_rate: 48000,
-    is_default: false,
-  },
-  {
-    id: "hw-out-phones-1",
-    name: "Headphones (Realtek High Definition Audio)",
-    device_type: "Output",
-    channels: 2,
-    sample_rate: 48000,
-    is_default: true,
-  },
-  {
-    id: "hw-out-speakers-2",
-    name: "Studio Monitors (Focusrite Scarlett 2i2)",
-    device_type: "Output",
-    channels: 2,
-    sample_rate: 48000,
-    is_default: false,
-  },
-];
 
 /**
  * @brief Props definition for the TopBar component.
@@ -75,21 +27,41 @@ export interface TopBarProps {
   onAddVirtualDevice: (payload: { name: string; subtext: string; driverType?: string }) => void;
   /** @brief Callback to inject a new output node into the patchbay. */
   onAddOutput: (payload: { name: string; subtext: string; iconType: AudioIconType }) => void;
+  /** @brief Callback to clear all nodes and edges from the canvas. */
+  onClearGraph?: () => void;
+  /** @brief Callback to reload real hardware defaults. */
+  onResetHardware?: () => void;
+}
+
+/**
+ * @brief Imperative API exposed by TopBar to open dialogs programmatically.
+ */
+export interface TopBarHandle {
+  openAddSource: () => void;
+  openAddVirtualDevice: () => void;
+  openAddOutput: () => void;
 }
 
 /**
  * @brief Top navigation bar and modal manager for patchbay graph operations.
  * @param {TopBarProps} props Callback functions for graph mutations.
+ * @param {React.ForwardedRef<TopBarHandle>} ref Forwarded handle.
  * @return {React.JSX.Element} Rendered TopBar header.
  */
-export function TopBar({
-  onAddSource,
-  onAddVirtualDevice,
-  onAddOutput,
-}: TopBarProps): React.JSX.Element {
+function TopBarRender(
+  props: TopBarProps,
+  ref: React.ForwardedRef<TopBarHandle>
+): React.JSX.Element {
+  const { onAddSource, onAddVirtualDevice, onAddOutput, onClearGraph, onResetHardware } = props;
   const [activeModal, setActiveModal] = useState<"source" | "virtual" | "output" | null>(null);
   const [apps, setApps] = useState<AudioProcessDescriptor[]>([]);
   const [devices, setDevices] = useState<AudioDeviceDescriptor[]>([]);
+
+  useImperativeHandle(ref, () => ({
+    openAddSource: () => setActiveModal("source"),
+    openAddVirtualDevice: () => setActiveModal("virtual"),
+    openAddOutput: () => setActiveModal("output"),
+  }));
 
   useEffect(() => {
     let isMounted = true;
@@ -97,16 +69,16 @@ export function TopBar({
     async function loadData() {
       try {
         const runningApps = await invoke<AudioProcessDescriptor[]>("get_running_apps");
-        if (isMounted) setApps(runningApps.length > 0 ? runningApps : FALLBACK_APPS);
+        if (isMounted) setApps(Array.isArray(runningApps) ? runningApps : []);
       } catch {
-        if (isMounted) setApps(FALLBACK_APPS);
+        if (isMounted) setApps([]);
       }
 
       try {
         const devList = await invoke<AudioDeviceDescriptor[]>("get_devices");
-        if (isMounted) setDevices(devList.length > 0 ? devList : FALLBACK_DEVICES);
+        if (isMounted) setDevices(Array.isArray(devList) ? devList : []);
       } catch {
-        if (isMounted) setDevices(FALLBACK_DEVICES);
+        if (isMounted) setDevices([]);
       }
     }
 
@@ -141,11 +113,11 @@ export function TopBar({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setActiveModal("source")}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-500/15 border border-sky-500/30 text-sky-300 hover:bg-sky-500/25 hover:border-sky-500/50 shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-500/15 border border-sky-500/30 text-sky-300 hover:bg-sky-500/25 hover:border-sky-500/50 shadow-sm transition-all cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Source</span>
@@ -154,7 +126,7 @@ export function TopBar({
           <button
             type="button"
             onClick={() => setActiveModal("virtual")}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-500/15 border border-violet-500/30 text-violet-300 hover:bg-violet-500/25 hover:border-violet-500/50 shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-500/15 border border-violet-500/30 text-violet-300 hover:bg-violet-500/25 hover:border-violet-500/50 shadow-sm transition-all cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>New Virtual Device</span>
@@ -163,49 +135,71 @@ export function TopBar({
           <button
             type="button"
             onClick={() => setActiveModal("output")}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25 hover:border-emerald-500/50 shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25 hover:border-emerald-500/50 shadow-sm transition-all cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Output</span>
           </button>
+
+          <div className="h-4 w-[1px] bg-slate-800 mx-1" />
+
+          {/* Reset real hardware defaults */}
+          {onResetHardware && (
+            <button
+              type="button"
+              onClick={onResetHardware}
+              title="Reset to Real Default Hardware Devices"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-sky-300 hover:bg-slate-800 border border-transparent hover:border-slate-700 transition-all cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Reset Defaults</span>
+            </button>
+          )}
+
+          {/* Clear Graph to Empty */}
+          {onClearGraph && (
+            <button
+              type="button"
+              onClick={onClearGraph}
+              title="Clear all nodes and wires"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Clear Canvas</span>
+            </button>
+          )}
         </div>
 
-        {/* Telemetry Status Badges */}
-        <div className="flex items-center gap-2 text-xs">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700/60">
-            <Cpu className="w-3.5 h-3.5 text-sky-400" />
-            <span className="text-slate-400 text-[11px]">48,000 Hz</span>
+        {/* Status indicator badges */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700/50 text-[11px] text-slate-300">
+            <Cpu className="w-3 h-3 text-sky-400" />
+            <span className="font-mono">48 kHz</span>
           </div>
-
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700/60">
-            <Activity className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-emerald-400 font-mono text-[11px]">&lt; 10 ms</span>
-          </div>
-
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700/60">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-emerald-400 text-[11px] font-medium">Engine Active</span>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-400">
+            <Activity className="w-3 h-3 animate-pulse" />
+            <span className="font-medium">Active</span>
           </div>
         </div>
       </header>
 
-      {/* Render active modal */}
+      {/* Modal: Add Source */}
       {activeModal === "source" && (
         <AddSourceModal
           apps={apps}
           devices={devices}
-          onSelectApp={(app, icon) => {
+          onSelectApp={(app, iconType) => {
             onAddSource({
               name: app.title || app.name,
-              subtext: `PID: ${app.pid} • ${app.name}`,
-              iconType: icon,
+              subtext: `PID: ${app.pid} • Process Audio`,
+              iconType,
             });
             setActiveModal(null);
           }}
           onSelectInputDevice={(dev) => {
             onAddSource({
               name: dev.name,
-              subtext: `${dev.channels}ch • ${dev.sample_rate / 1000} kHz`,
+              subtext: `Hardware Mic • ${dev.sample_rate} Hz`,
               iconType: "mic",
             });
             setActiveModal(null);
@@ -214,32 +208,30 @@ export function TopBar({
         />
       )}
 
+      {/* Modal: Create Virtual Device */}
       {activeModal === "virtual" && (
         <CreateVirtualModal
-          onCreate={(name, driver) => {
+          onCreate={(name: string, driverType: string) => {
             onAddVirtualDevice({
               name,
-              subtext:
-                driver === "VBCable"
-                  ? "VB-Audio Cable Driver"
-                  : driver === "VirtualAudioCable"
-                  ? "VAC Driver"
-                  : "Dyno Software Loopback",
-              driverType: driver,
+              subtext: `Virtual Audio Cable (${driverType})`,
+              driverType,
             });
+            setActiveModal(null);
           }}
           onClose={() => setActiveModal(null)}
         />
       )}
 
+      {/* Modal: Add Output */}
       {activeModal === "output" && (
         <AddOutputModal
           devices={devices}
-          onSelectOutput={(dev, icon) => {
+          onSelectOutput={(dev, iconType) => {
             onAddOutput({
               name: dev.name,
-              subtext: `${dev.channels}ch • ${dev.sample_rate / 1000} kHz`,
-              iconType: icon,
+              subtext: `Output • ${dev.sample_rate} Hz`,
+              iconType,
             });
             setActiveModal(null);
           }}
@@ -250,4 +242,5 @@ export function TopBar({
   );
 }
 
+export const TopBar = forwardRef<TopBarHandle, TopBarProps>(TopBarRender);
 export default TopBar;

@@ -10,7 +10,7 @@ name = "dyno_virtual_audio_mixer_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", default-features = false }
+tauri-build = { version = "2", default-features = false , features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }

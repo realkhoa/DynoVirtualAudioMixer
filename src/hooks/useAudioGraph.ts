@@ -18,8 +18,12 @@ import {
 } from "@xyflow/react";
 import { invoke } from "@tauri-apps/api/core";
 
-import type { AudioNodeData, AudioIconType } from "../types/audio";
-import { INITIAL_NODES, INITIAL_EDGES } from "../components/canvas/initialGraph";
+import type { AudioNodeData, AudioIconType, AudioDeviceDescriptor } from "../types/audio";
+import {
+  INITIAL_NODES,
+  INITIAL_EDGES,
+  createDefaultHardwareGraph,
+} from "../components/canvas/initialGraph";
 import {
   createSourceNode,
   createVirtualNode,
@@ -32,6 +36,8 @@ import {
   removeEdgeFromList,
   buildAudioGraphDto,
 } from "./audioGraphHelpers";
+
+const STORAGE_KEY = "dyno_mixer_graph_state_v2";
 
 /**
  * @brief Return payload contract for useAudioGraph hook.
@@ -65,14 +71,36 @@ export interface UseAudioGraphResult {
   addVirtualNode: (payload: { name: string; subtext: string; driverType?: string }) => void;
   /** @brief Injects a new output destination node. */
   addOutputNode: (payload: { name: string; subtext: string; iconType: AudioIconType }) => void;
+  /** @brief Clears the entire graph to an empty canvas. */
+  clearGraph: () => void;
+  /** @brief Resets canvas to real detected system hardware endpoints. */
+  resetToHardwareDefaults: () => Promise<void>;
   /** @brief Synchronizes the current patchbay topology to Tauri backend. */
   syncGraphToBackend: (currentNodes: Node<AudioNodeData>[], currentEdges: Edge[]) => void;
 }
 
 /**
+ * @brief Attempts to load persisted graph topology from browser localStorage.
+ * @return {{ nodes: Node<AudioNodeData>[]; edges: Edge[] } | null} Restored graph or null.
+ */
+function loadPersistedGraph(): { nodes: Node<AudioNodeData>[]; edges: Edge[] } | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.nodes) && Array.isArray(parsed?.edges)) {
+      return { nodes: parsed.nodes, edges: parsed.edges };
+    }
+  } catch {
+    // Ignore storage parse errors
+  }
+  return null;
+}
+
+/**
  * @brief Comprehensive audio patchbay graph hook.
  * @details Manages node/edge lifecycles, Smart Stereo Auto-Pairing on connection, volume/mute
- * parameters, and synchronizes the audio matrix topology with the Tauri backend.
+ * parameters, dynamic hardware detection, and backend synchronization.
  * @param initialNodes Optional initial nodes array (defaults to INITIAL_NODES).
  * @param initialEdges Optional initial edges array (defaults to INITIAL_EDGES).
  * @return Hook state and control methods.
@@ -81,8 +109,14 @@ export function useAudioGraph(
   initialNodes: Node<AudioNodeData>[] = INITIAL_NODES,
   initialEdges: Edge[] = INITIAL_EDGES
 ): UseAudioGraphResult {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<AudioNodeData>>(initialNodes);
-  const [edges, setEdges, reactFlowOnEdgesChange] = useEdgesState(initialEdges);
+  const persisted = typeof window !== "undefined" ? loadPersistedGraph() : null;
+
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<AudioNodeData>>(
+    persisted?.nodes ?? initialNodes
+  );
+  const [edges, setEdges, reactFlowOnEdgesChange] = useEdgesState(
+    persisted?.edges ?? initialEdges
+  );
 
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
@@ -97,8 +131,18 @@ export function useAudioGraph(
     (currentNodes: Node<AudioNodeData>[], currentEdges: Edge[]) => {
       const payload = buildAudioGraphDto(currentNodes, currentEdges);
       invoke("update_routing_graph", { graph: payload }).catch(() => {
-        // Silently ignore in browser mock preview mode
+        // Silently ignore in browser preview mode
       });
+
+      // Save to localStorage
+      try {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ nodes: currentNodes, edges: currentEdges })
+        );
+      } catch {
+        // Ignore storage write issues
+      }
     },
     []
   );
@@ -176,6 +220,49 @@ export function useAudioGraph(
     onRemove: handleRemoveNode,
   };
 
+  /**
+   * @brief Completely clears all nodes and edges from the canvas.
+   */
+  const clearGraph = useCallback(() => {
+    setNodes([]);
+    setEdges([]);
+    syncGraphToBackend([], []);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // Ignore
+    }
+  }, [setNodes, setEdges, syncGraphToBackend]);
+
+  /**
+   * @brief Resets canvas to real detected system hardware endpoints (Default Mic -> Default Output).
+   */
+  const resetToHardwareDefaults = useCallback(async () => {
+    try {
+      const realDevices = await invoke<AudioDeviceDescriptor[]>("get_devices");
+      if (Array.isArray(realDevices) && realDevices.length > 0) {
+        const { nodes: hwNodes, edges: hwEdges } = createDefaultHardwareGraph(realDevices);
+        const configuredNodes = hwNodes.map((n) => ({
+          ...n,
+          data: { ...n.data, ...nodeHandlers },
+        }));
+        const configuredEdges = hwEdges.map((e) => ({
+          ...e,
+          data: { ...e.data, onDelete: handleRemoveEdge },
+        }));
+
+        setNodes(configuredNodes);
+        setEdges(configuredEdges);
+        syncGraphToBackend(configuredNodes, configuredEdges);
+        return;
+      }
+    } catch {
+      // Fallback if not inside Tauri
+    }
+    clearGraph();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clearGraph, handleRemoveEdge, syncGraphToBackend]);
+
   // Helper to insert created node and synchronize matrix
   const insertNode = useCallback(
     (node: Node<AudioNodeData>) => {
@@ -188,26 +275,30 @@ export function useAudioGraph(
     [setNodes, syncGraphToBackend]
   );
 
-  // Bind handlers and custom delete to edges on mount
+  // Initialize real hardware or bind handlers on mount
   useEffect(() => {
-    setNodes((nds) =>
-      nds.map((n) => ({
-        ...n,
-        data: { ...n.data, ...nodeHandlers },
-      }))
-    );
+    if (!persisted && initialNodes.length === 0) {
+      // If no persisted state and clean canvas, populate user's real hardware devices!
+      resetToHardwareDefaults();
+    } else {
+      setNodes((nds) =>
+        nds.map((n) => ({
+          ...n,
+          data: { ...n.data, ...nodeHandlers },
+        }))
+      );
 
-    setEdges((eds) =>
-      eds.map((e) => ({
-        ...e,
-        type: e.type || "glowing",
-        data: {
-          ...e.data,
-          onDelete: handleRemoveEdge,
-        },
-      }))
-    );
-    // Run once on mount
+      setEdges((eds) =>
+        eds.map((e) => ({
+          ...e,
+          type: e.type || "glowing",
+          data: {
+            ...e.data,
+            onDelete: handleRemoveEdge,
+          },
+        }))
+      );
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -294,6 +385,8 @@ export function useAudioGraph(
     addSourceNode,
     addVirtualNode,
     addOutputNode,
+    clearGraph,
+    resetToHardwareDefaults,
     syncGraphToBackend,
   };
 }

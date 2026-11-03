@@ -6,7 +6,7 @@
  */
 
 import React, { useRef } from "react";
-import { TopBar } from "./components/TopBar";
+import { TopBar, type TopBarHandle } from "./components/TopBar";
 import { GraphCanvas, type GraphCanvasHandle } from "./components/GraphCanvas";
 
 /**
@@ -44,16 +44,24 @@ function AppFooter(): React.JSX.Element {
  */
 export default function App(): React.JSX.Element {
   const canvasRef = useRef<GraphCanvasHandle>(null);
+  const topBarRef = useRef<TopBarHandle>(null);
 
   return (
     <div className="flex flex-col h-screen w-screen bg-[#0a0f1d] text-slate-100 select-none overflow-hidden">
       <TopBar
+        ref={topBarRef}
         onAddSource={(p) => canvasRef.current?.addSourceNode(p)}
         onAddVirtualDevice={(p) => canvasRef.current?.addVirtualNode(p)}
         onAddOutput={(p) => canvasRef.current?.addOutputNode(p)}
+        onClearGraph={() => canvasRef.current?.clearGraph()}
+        onResetHardware={() => canvasRef.current?.resetToHardwareDefaults()}
       />
       <main className="flex-1 relative w-full h-full overflow-hidden">
-        <GraphCanvas ref={canvasRef} />
+        <GraphCanvas
+          ref={canvasRef}
+          onOpenAddSource={() => topBarRef.current?.openAddSource()}
+          onOpenAddOutput={() => topBarRef.current?.openAddOutput()}
+        />
       </main>
       <AppFooter />
     </div>

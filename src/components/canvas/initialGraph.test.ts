@@ -1,39 +1,57 @@
 /**
  * @file initialGraph.test.ts
- * @brief Unit tests for initial patchbay topology and channel index parsing.
+ * @brief Unit tests for initial patchbay topology and hardware graph construction.
  */
 
 import { describe, expect, test } from "bun:test";
 import {
   INITIAL_NODES,
   INITIAL_EDGES,
+  createDefaultHardwareGraph,
   parseChannelIndex,
 } from "./initialGraph";
+import type { AudioDeviceDescriptor } from "../../types/audio";
 
 describe("initialGraph", () => {
-  test("contains default sample nodes for sources, virtual buses, and outputs", () => {
-    expect(INITIAL_NODES.length).toBeGreaterThanOrEqual(5);
-
-    const spotifyNode = INITIAL_NODES.find((n) => n.id === "src-spotify");
-    expect(spotifyNode).toBeDefined();
-    expect(spotifyNode?.data.nodeType).toBe("source");
-
-    const vdevNode = INITIAL_NODES.find((n) => n.id === "vdev-stream");
-    expect(vdevNode).toBeDefined();
-    expect(vdevNode?.data.nodeType).toBe("virtual");
-
-    const outNode = INITIAL_NODES.find((n) => n.id === "out-headphones");
-    expect(outNode).toBeDefined();
-    expect(outNode?.data.nodeType).toBe("output");
+  test("defaults to a clean empty canvas without synthetic placeholders", () => {
+    expect(INITIAL_NODES.length).toBe(0);
+    expect(INITIAL_EDGES.length).toBe(0);
   });
 
-  test("contains initial glowing patch cables", () => {
-    expect(INITIAL_EDGES.length).toBeGreaterThanOrEqual(4);
-    for (const edge of INITIAL_EDGES) {
-      expect(edge.source).toBeDefined();
-      expect(edge.target).toBeDefined();
-      expect(edge.animated).toBe(true);
-    }
+  test("dynamically builds hardware graph from enumerated system devices", () => {
+    const mockDevices: AudioDeviceDescriptor[] = [
+      {
+        id: "in-mic-1",
+        name: "Microphone (USB Condenser Microphone)",
+        device_type: "Input",
+        channels: 2,
+        sample_rate: 48000,
+        is_default: true,
+      },
+      {
+        id: "out-spk-1",
+        name: "Speakers (USB Condenser Microphone)",
+        device_type: "Output",
+        channels: 2,
+        sample_rate: 48000,
+        is_default: true,
+      },
+    ];
+
+    const { nodes, edges } = createDefaultHardwareGraph(mockDevices);
+
+    expect(nodes.length).toBe(2);
+    expect(nodes[0].data.nodeType).toBe("source");
+    expect(nodes[0].data.name).toBe("Microphone (USB Condenser Microphone)");
+    expect(nodes[1].data.nodeType).toBe("output");
+    expect(nodes[1].data.name).toBe("Speakers (USB Condenser Microphone)");
+
+    // Verifies stereo L/R auto-wiring
+    expect(edges.length).toBe(2);
+    expect(edges[0].sourceHandle).toBe("out-0");
+    expect(edges[0].targetHandle).toBe("in-0");
+    expect(edges[1].sourceHandle).toBe("out-1");
+    expect(edges[1].targetHandle).toBe("in-1");
   });
 
   test("correctly parses channel index from handle identifiers", () => {

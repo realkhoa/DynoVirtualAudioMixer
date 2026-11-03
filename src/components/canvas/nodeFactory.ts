@@ -18,17 +18,24 @@ export interface NodeHandlers {
   onRemove: (id: string) => void;
 }
 
+const DEFAULT_HANDLERS: NodeHandlers = {
+  onVolumeChange: () => {},
+  onMuteToggle: () => {},
+  onRemove: () => {},
+};
+
 /**
  * @brief Builds standard audio baseline metrics for new nodes.
- * @param handlers Node event callback handlers.
+ * @param handlers Optional node event callback handlers.
  * @return Default initial telemetry and callbacks.
  */
-function createBaseMetrics(handlers: NodeHandlers) {
+function createBaseMetrics(handlers?: Partial<NodeHandlers>) {
   return {
     volume: 1.0,
     muted: false,
     leftLevelDb: -60,
     rightLevelDb: -60,
+    ...DEFAULT_HANDLERS,
     ...handlers,
   };
 }
@@ -36,18 +43,18 @@ function createBaseMetrics(handlers: NodeHandlers) {
 /**
  * @brief Constructs a new Audio Source Node.
  * @param payload Source configuration parameters.
- * @param handlers Node event callback handlers.
+ * @param handlers Optional node event callback handlers.
  * @return React Flow Node populated with AudioNodeData.
  */
 export function createSourceNode(
-  payload: { name: string; subtext: string; iconType: AudioIconType },
-  handlers: NodeHandlers
+  payload: { name: string; subtext: string; iconType: AudioIconType; position?: { x: number; y: number } },
+  handlers?: Partial<NodeHandlers>
 ): Node<AudioNodeData> {
   const newId = `src-${Date.now()}`;
   return {
     id: newId,
     type: "source",
-    position: { x: 100 + Math.random() * 80, y: 150 + Math.random() * 120 },
+    position: payload.position || { x: 100 + Math.random() * 80, y: 150 + Math.random() * 120 },
     data: {
       id: newId,
       name: payload.name,
@@ -64,18 +71,18 @@ export function createSourceNode(
 /**
  * @brief Constructs a new Virtual Device Audio Bus Node.
  * @param payload Virtual bus configuration parameters.
- * @param handlers Node event callback handlers.
+ * @param handlers Optional node event callback handlers.
  * @return React Flow Node populated with AudioNodeData.
  */
 export function createVirtualNode(
-  payload: { name: string; subtext: string; driverType?: string },
-  handlers: NodeHandlers
+  payload: { name: string; subtext: string; driverType?: string; position?: { x: number; y: number } },
+  handlers?: Partial<NodeHandlers>
 ): Node<AudioNodeData> {
   const newId = `vdev-${Date.now()}`;
   return {
     id: newId,
     type: "virtual",
-    position: { x: 440 + Math.random() * 60, y: 180 + Math.random() * 100 },
+    position: payload.position || { x: 440 + Math.random() * 60, y: 180 + Math.random() * 100 },
     data: {
       id: newId,
       name: payload.name,
@@ -92,18 +99,18 @@ export function createVirtualNode(
 /**
  * @brief Constructs a new Output Endpoint Node.
  * @param payload Output destination configuration parameters.
- * @param handlers Node event callback handlers.
+ * @param handlers Optional node event callback handlers.
  * @return React Flow Node populated with AudioNodeData.
  */
 export function createOutputNode(
-  payload: { name: string; subtext: string; iconType: AudioIconType },
-  handlers: NodeHandlers
+  payload: { name: string; subtext: string; iconType: AudioIconType; position?: { x: number; y: number } },
+  handlers?: Partial<NodeHandlers>
 ): Node<AudioNodeData> {
   const newId = `out-${Date.now()}`;
   return {
     id: newId,
     type: "output",
-    position: { x: 820 + Math.random() * 60, y: 150 + Math.random() * 120 },
+    position: payload.position || { x: 820 + Math.random() * 60, y: 150 + Math.random() * 120 },
     data: {
       id: newId,
       name: payload.name,
