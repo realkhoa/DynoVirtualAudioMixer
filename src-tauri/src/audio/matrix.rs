@@ -112,6 +112,10 @@ pub struct MixerNode {
     pub id: String,
     /// @brief Human-readable display name.
     pub name: String,
+    /// @brief Category of the mixer node (e.g., "mic", "app", "output", "virtual").
+    pub node_type: String,
+    /// @brief Optional associated OS Process ID for application audio nodes.
+    pub pid: Option<u32>,
     /// @brief Linear volume gain applied to this node (1.0 = 0 dBFS unity gain).
     pub volume: f32,
     /// @brief Whether this node is muted.
@@ -140,9 +144,25 @@ impl MixerNode {
     /// @param output_channels Number of output channels.
     /// @return A new MixerNode instance.
     pub fn new(id: impl Into<String>, name: impl Into<String>, input_channels: u16, output_channels: u16) -> Self {
+        let id_str = id.into();
+        let name_str = name.into();
+        let default_type = if input_channels == 0 && output_channels > 0 {
+            if id_str.starts_with("app-") || name_str.to_lowercase().contains(".exe") {
+                "app".to_string()
+            } else {
+                "mic".to_string()
+            }
+        } else if input_channels > 0 && output_channels == 0 {
+            "output".to_string()
+        } else {
+            "virtual".to_string()
+        };
+
         Self {
-            id: id.into(),
-            name: name.into(),
+            id: id_str,
+            name: name_str,
+            node_type: default_type,
+            pid: None,
             volume: 1.0,
             muted: false,
             input_channels,
@@ -153,6 +173,43 @@ impl MixerNode {
             noise_gate_enabled: false,
             noise_gate_threshold_db: -45.0,
         }
+    }
+
+    /// @brief Builder method to configure node classification category.
+    /// @param node_type Node category string (e.g. "mic", "app", "output", "virtual").
+    /// @return Modified MixerNode instance.
+    pub fn with_node_type(mut self, node_type: impl Into<String>) -> Self {
+        self.node_type = node_type.into();
+        self
+    }
+
+    /// @brief Builder method to configure associated OS process ID.
+    /// @param pid Process ID.
+    /// @return Modified MixerNode instance.
+    pub fn with_pid(mut self, pid: Option<u32>) -> Self {
+        self.pid = pid;
+        self
+    }
+
+    /// @brief Checks whether this node is a hardware microphone or input endpoint.
+    /// @return `true` if node represents a physical microphone or line-in.
+    pub fn is_microphone(&self) -> bool {
+        self.node_type == "mic"
+            || self.node_type == "input"
+            || self.id.starts_with("mic-")
+            || self.id.starts_with("in-")
+            || self.name.to_lowercase().contains("mic")
+            || self.name.to_lowercase().contains("microphone")
+    }
+
+    /// @brief Checks whether this node represents an application process.
+    /// @return `true` if node represents a software application.
+    pub fn is_application(&self) -> bool {
+        self.node_type == "app"
+            || self.node_type == "process"
+            || self.pid.is_some()
+            || self.id.starts_with("app-")
+            || self.name.to_lowercase().contains(".exe")
     }
 
     /// @brief Builder method to configure node linear volume gain.

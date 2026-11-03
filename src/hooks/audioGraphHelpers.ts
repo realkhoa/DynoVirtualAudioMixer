@@ -155,7 +155,8 @@ export function buildAudioGraphDto(
   const nodeDtos: NodeDto[] = nodes.map((n) => ({
     id: n.id,
     name: n.data.name,
-    node_type: n.data.nodeType,
+    node_type: n.data.iconType === "mic" ? "mic" : (n.data.nodeType || "source"),
+    pid: n.data.pid,
     volume: n.data.volume,
     muted: n.data.muted,
     input_channels: n.data.inputChannels,

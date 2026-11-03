@@ -4,6 +4,7 @@
 //! capable of producing audio (e.g., Spotify, Discord, web browsers, media players, games),
 //! and retrieves their Process IDs, executable names, and window titles.
 
+use crate::audio::capture::{linear_to_db, METER_SILENCE_DB};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -13,8 +14,8 @@ use windows::{
     Win32::{
         Foundation::{BOOL, HWND, LPARAM},
         Media::Audio::{
-            eRender, IAudioSessionControl2, IAudioSessionManager2, IMMDeviceEnumerator,
-            MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
+            eRender, Endpoints::IAudioMeterInformation, IAudioSessionControl2, IAudioSessionManager2,
+            IMMDeviceEnumerator, MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
         },
         System::{
             Com::{CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED},
@@ -63,6 +64,130 @@ impl AudioProcessDescriptor {
             has_audio_session,
         }
     }
+}
+
+/// @brief Real-time audio peak telemetry snapshot for active system applications.
+#[derive(Debug, Default, Clone)]
+pub struct ProcessAudioMeterSnapshot {
+    /// @brief Peak levels indexed by process ID: `pid -> (peak_left_db, peak_right_db)`.
+    pub peaks_by_pid: HashMap<u32, (f32, f32)>,
+    /// @brief Peak levels indexed by normalized process name (e.g., "spotify", "chrome").
+    pub peaks_by_name: HashMap<String, (f32, f32)>,
+}
+
+impl ProcessAudioMeterSnapshot {
+    /// @brief Queries peak level for a specific process by PID or name.
+    /// @param pid Optional target process ID.
+    /// @param name Display or executable name of the process.
+    /// @return Tuple containing (peak_left_db, peak_right_db).
+    pub fn get_peak(&self, pid: Option<u32>, name: &str) -> (f32, f32) {
+        if let Some(p) = pid {
+            if let Some(&levels) = self.peaks_by_pid.get(&p) {
+                return levels;
+            }
+        }
+
+        let lower = name.to_lowercase();
+        for (proc_name, &levels) in &self.peaks_by_name {
+            if lower.contains(proc_name) || proc_name.contains(&lower) {
+                return levels;
+            }
+        }
+
+        (METER_SILENCE_DB, METER_SILENCE_DB)
+    }
+}
+
+/// @brief Collects real-time audio peak levels across all active Windows WASAPI application sessions.
+/// @return Populated ProcessAudioMeterSnapshot with peak decibels per PID and process name.
+pub fn get_active_process_meter_snapshot() -> ProcessAudioMeterSnapshot {
+    let mut snapshot = ProcessAudioMeterSnapshot::default();
+    if std::env::var("CI").is_ok() || std::env::var("GITHUB_ACTIONS").is_ok() {
+        return snapshot;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let _com = ComGuard::new();
+
+        unsafe {
+            let enumerator: Result<IMMDeviceEnumerator, _> =
+                CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL);
+            if let Ok(enumerator) = enumerator {
+                if let Ok(collection) = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE) {
+                    if let Ok(count) = collection.GetCount() {
+                        for i in 0..count {
+                            if let Ok(device) = collection.Item(i) {
+                                if let Ok(manager) =
+                                    device.Activate::<IAudioSessionManager2>(CLSCTX_ALL, None)
+                                {
+                                    if let Ok(session_enum) = manager.GetSessionEnumerator() {
+                                        if let Ok(session_count) = session_enum.GetCount() {
+                                            for s in 0..session_count {
+                                                if let Ok(session) = session_enum.GetSession(s) {
+                                                    if let Ok(control2) =
+                                                        session.cast::<IAudioSessionControl2>()
+                                                    {
+                                                        if let Ok(pid) = control2.GetProcessId() {
+                                                            if pid > 0 {
+                                                                let mut db_l = METER_SILENCE_DB;
+                                                                let mut db_r = METER_SILENCE_DB;
+
+                                                                if let Ok(meter) = session.cast::<IAudioMeterInformation>() {
+                                                                    if let Ok(channel_count) = meter.GetMeteringChannelCount() {
+                                                                        if channel_count > 0 {
+                                                                            let mut peaks = vec![0.0f32; channel_count as usize];
+                                                                            if meter.GetChannelsPeakValues(&mut peaks).is_ok() {
+                                                                                let p_l = peaks[0];
+                                                                                let p_r = if peaks.len() > 1 { peaks[1] } else { p_l };
+                                                                                db_l = linear_to_db(p_l);
+                                                                                db_r = linear_to_db(p_r);
+                                                                            }
+                                                                        }
+                                                                    } else if let Ok(peak) = meter.GetPeakValue() {
+                                                                        let db = linear_to_db(peak);
+                                                                        db_l = db;
+                                                                        db_r = db;
+                                                                    }
+                                                                }
+
+                                                                snapshot.peaks_by_pid.entry(pid)
+                                                                    .and_modify(|(cur_l, cur_r)| {
+                                                                        if db_l > *cur_l { *cur_l = db_l; }
+                                                                        if db_r > *cur_r { *cur_r = db_r; }
+                                                                    })
+                                                                    .or_insert((db_l, db_r));
+
+                                                                let exe_name = get_process_name_by_pid(pid);
+                                                                if !exe_name.is_empty() {
+                                                                    let clean_name = exe_name
+                                                                        .to_lowercase()
+                                                                        .trim_end_matches(".exe")
+                                                                        .to_string();
+                                                                    snapshot.peaks_by_name.entry(clean_name)
+                                                                        .and_modify(|(cur_l, cur_r)| {
+                                                                            if db_l > *cur_l { *cur_l = db_l; }
+                                                                            if db_r > *cur_r { *cur_r = db_r; }
+                                                                        })
+                                                                        .or_insert((db_l, db_r));
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    snapshot
 }
 
 /// @brief RAII guard ensuring proper COM library initialization and cleanup.

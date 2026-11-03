@@ -76,7 +76,13 @@ export interface GraphCanvasProps {
  */
 export interface GraphCanvasHandle {
   /** @brief Injects a new audio source node. */
-  addSourceNode: (payload: { name: string; subtext: string; iconType: AudioIconType }) => void;
+  addSourceNode: (payload: {
+    name: string;
+    subtext: string;
+    iconType: AudioIconType;
+    pid?: number;
+    nodeType?: string;
+  }) => void;
   /** @brief Injects a new virtual audio device node. */
   addVirtualNode: (payload: { name: string; subtext: string; driverType?: string; channels?: number }) => void;
   /** @brief Injects a new output destination node. */

@@ -34,6 +34,9 @@ pub struct NodeDto {
     /// @brief Optional node category (e.g., "input", "output", "virtual", "app").
     #[serde(default)]
     pub node_type: Option<String>,
+    /// @brief Optional associated OS process ID for application audio nodes.
+    #[serde(default)]
+    pub pid: Option<u32>,
     /// @brief Linear volume gain applied to this node (1.0 = 0 dBFS unity gain).
     #[serde(default = "default_volume")]
     pub volume: f32,
@@ -80,6 +83,7 @@ impl NodeDto {
             id: id.into(),
             name: name.into(),
             node_type: None,
+            pid: None,
             volume: 1.0,
             muted: false,
             input_channels,
@@ -101,7 +105,8 @@ impl From<&MixerNode> for NodeDto {
         Self {
             id: node.id.clone(),
             name: node.name.clone(),
-            node_type: None,
+            node_type: Some(node.node_type.clone()),
+            pid: node.pid,
             volume: node.volume,
             muted: node.muted,
             input_channels: node.input_channels,
@@ -129,13 +134,19 @@ impl From<&NodeDto> for MixerNode {
     /// @param dto Reference to the NodeDto.
     /// @return MixerNode instance.
     fn from(dto: &NodeDto) -> Self {
-        MixerNode::new(&dto.id, &dto.name, dto.input_channels, dto.output_channels)
+        let mut node = MixerNode::new(&dto.id, &dto.name, dto.input_channels, dto.output_channels)
             .with_volume(dto.volume)
             .with_muted(dto.muted)
             .with_monitor(dto.is_monitor)
             .with_mute_when_monitoring(dto.mute_when_monitoring)
             .with_offline(dto.is_offline)
             .with_noise_gate(dto.noise_gate_enabled, dto.noise_gate_threshold_db)
+            .with_pid(dto.pid);
+
+        if let Some(ref t) = dto.node_type {
+            node = node.with_node_type(t);
+        }
+        node
     }
 }
 

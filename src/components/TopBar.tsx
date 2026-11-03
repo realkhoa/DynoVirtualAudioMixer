@@ -31,7 +31,13 @@ import { AddOutputModal } from "./modals/AddOutputModal";
  */
 export interface TopBarProps {
   /** @brief Callback to inject a new source node into the patchbay. */
-  onAddSource: (payload: { name: string; subtext: string; iconType: AudioIconType }) => void;
+  onAddSource: (payload: {
+    name: string;
+    subtext: string;
+    iconType: AudioIconType;
+    pid?: number;
+    nodeType?: string;
+  }) => void;
   /** @brief Callback to inject a new virtual device node into the patchbay. */
   onAddVirtualDevice: (payload: { name: string; subtext: string; driverType?: string; channels?: number }) => void;
   /** @brief Callback to inject a new output node into the patchbay. */
@@ -256,6 +262,8 @@ function TopBarRender(
               name: app.title || app.name,
               subtext: `PID: ${app.pid} • Process Audio`,
               iconType,
+              pid: app.pid,
+              nodeType: "app",
             });
             setActiveModal(null);
           }}
@@ -264,6 +272,7 @@ function TopBarRender(
               name: dev.name,
               subtext: `Hardware Mic • ${dev.sample_rate} Hz`,
               iconType: "mic",
+              nodeType: "mic",
             });
             setActiveModal(null);
           }}

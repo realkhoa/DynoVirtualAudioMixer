@@ -161,6 +161,9 @@ impl AppState {
         // Extract and decay the live hardware microphone peak decibels (decay 1.2 dB per 60 FPS tick)
         let (mic_db_l, mic_db_r) = self.mic_tracker.get_and_decay(1.2);
 
+        // Retrieve real-time active Windows application audio peak snapshot
+        let process_meters = crate::audio::process_scanner::get_active_process_meter_snapshot();
+
         // Precalculate source node outputs (peak dB)
         let mut source_peaks: HashMap<String, (f32, f32)> = HashMap::new();
 
@@ -170,9 +173,22 @@ impl AppState {
                     (MIN_PEAK_DB, MIN_PEAK_DB)
                 } else {
                     let vol_gain_db = 20.0 * node.volume.log10();
+
+                    // Determine independent audio level depending on node classification:
+                    let (src_l, src_r) = if node.is_microphone() {
+                        // Physical hardware microphone input
+                        (mic_db_l, mic_db_r)
+                    } else if node.is_application() {
+                        // Application audio session (Spotify, Discord, Chrome, games)
+                        process_meters.get_peak(node.pid, &node.name)
+                    } else {
+                        // Silent or unidentified source without active stream
+                        (MIN_PEAK_DB, MIN_PEAK_DB)
+                    };
+
                     (
-                        (mic_db_l + vol_gain_db).clamp(MIN_PEAK_DB, 0.0),
-                        (mic_db_r + vol_gain_db).clamp(MIN_PEAK_DB, 0.0),
+                        (src_l + vol_gain_db).clamp(MIN_PEAK_DB, 0.0),
+                        (src_r + vol_gain_db).clamp(MIN_PEAK_DB, 0.0),
                     )
                 };
                 source_peaks.insert(node_id.clone(), (raw_l, raw_r));

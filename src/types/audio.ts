@@ -103,6 +103,8 @@ export interface AudioNodeData {
   subtext?: string;
   /** @brief Classification of the node (source, output, or virtual). */
   nodeType: AudioNodeType;
+  /** @brief Optional OS Process ID for application audio nodes. */
+  pid?: number;
   /** @brief Visual icon classification. */
   iconType?: AudioIconType;
   /** @brief Linear volume gain (0.0 to 1.5, where 1.0 represents unity 0 dB gain). */
@@ -147,6 +149,8 @@ export interface NodeDto {
   name: string;
   /** @brief Optional node type identifier. */
   node_type?: string;
+  /** @brief Optional OS Process ID for application audio nodes. */
+  pid?: number;
   /** @brief Linear volume multiplier. */
   volume: number;
   /** @brief Muted flag. */

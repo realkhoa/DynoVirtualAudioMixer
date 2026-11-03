@@ -59,7 +59,13 @@ export interface UseAudioGraphResult {
   /** @brief Explicitly disconnects and removes a patch cord by edge ID. */
   handleRemoveEdge: (edgeId: string) => void;
   /** @brief Injects a new audio source node. */
-  addSourceNode: (payload: { name: string; subtext: string; iconType: AudioIconType }) => void;
+  addSourceNode: (payload: {
+    name: string;
+    subtext: string;
+    iconType: AudioIconType;
+    pid?: number;
+    nodeType?: string;
+  }) => void;
   /** @brief Injects a new virtual audio device bus node. */
   addVirtualNode: (payload: { name: string; subtext: string; driverType?: string; channels?: number }) => void;
   /** @brief Injects a new output destination node. */
@@ -300,7 +306,13 @@ export function useAudioGraph(
   );
 
   const addSourceNode = useCallback(
-    (payload: { name: string; subtext: string; iconType: AudioIconType }) => {
+    (payload: {
+      name: string;
+      subtext: string;
+      iconType: AudioIconType;
+      pid?: number;
+      nodeType?: string;
+    }) => {
       insertNode(createSourceNode(payload, nodeHandlers));
     },
     [insertNode, nodeHandlers]

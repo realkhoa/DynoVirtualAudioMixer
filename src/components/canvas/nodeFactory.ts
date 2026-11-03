@@ -51,6 +51,8 @@ export function createSourceNode(
     name: string;
     subtext: string;
     iconType: AudioIconType;
+    nodeType?: string;
+    pid?: number;
     channels?: number;
     isOffline?: boolean;
     noiseGateEnabled?: boolean;
@@ -59,7 +61,8 @@ export function createSourceNode(
   },
   handlers?: Partial<NodeHandlers>
 ): Node<AudioNodeData> {
-  const newId = `src-${Date.now()}`;
+  const isMic = payload.iconType === "mic";
+  const newId = isMic ? `mic-${Date.now()}` : `app-${Date.now()}`;
   return {
     id: newId,
     type: "source",
@@ -68,8 +71,9 @@ export function createSourceNode(
       id: newId,
       name: payload.name,
       subtext: payload.subtext,
-      nodeType: "source",
+      nodeType: (payload.nodeType || "source") as any,
       iconType: payload.iconType,
+      pid: payload.pid,
       inputChannels: 0,
       outputChannels: payload.channels ?? 2,
       isOffline: payload.isOffline ?? false,
