@@ -55,11 +55,11 @@ jobs:
       - name: Run Frontend Unit Tests
         run: bun test
 
-      - name: Run Backend Audio Engine Tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --verbose
-
       - name: Build Frontend Production Assets
         run: bun run build
+
+      - name: Run Backend Audio Engine Tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --verbose
 
       - name: Build Tauri Desktop Application
         run: bun x @tauri-apps/cli build --no-bundle
