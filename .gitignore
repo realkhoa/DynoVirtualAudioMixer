@@ -1,6 +1,7 @@
 # Rust build artifacts
 /src-tauri/target/
 target/
+.cargo/config.toml
 
 # Node / Bun dependencies and builds
 node_modules/
