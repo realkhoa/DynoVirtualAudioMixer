@@ -41,7 +41,6 @@ fn send_request(port: u16, request: &str) -> String {
 /// @return Returns `()` on assertion success.
 #[test]
 fn test_api_server_endpoints() {
-    let port = 49199;
     let state = AppState::new();
 
     // Populate a test node
@@ -50,7 +49,7 @@ fn test_api_server_endpoints() {
         matrix.add_node(MixerNode::new("mic_stream", "Streaming Mic", 1, 0).with_volume(1.0));
     }
 
-    start_api_server(state.clone(), port);
+    let port = start_api_server(state.clone(), 0).expect("API server should bind to an available port");
     thread::sleep(Duration::from_millis(150));
 
     // Test 1: GET /api/status

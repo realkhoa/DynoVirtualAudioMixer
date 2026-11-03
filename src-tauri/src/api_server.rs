@@ -160,21 +160,28 @@ fn handle_client(mut stream: TcpStream, state: &AppState) {
 }
 
 /// @brief Starts the background HTTP API listener on `127.0.0.1:port`.
-/// @details Spawns a dedicated OS thread. In case the port is already occupied (e.g. secondary instance),
-/// logs a warning and exits gracefully without terminating the application.
+/// @details Binds the TCP listener. If the specified port is unavailable or restricted by OS firewall/Hyper-V,
+/// falls back to an available ephemeral port. Spawns a dedicated background thread for client processing.
 /// @param state Shared application state container.
-/// @param port Local TCP port number to bind (typically 49152).
-pub fn start_api_server(state: AppState, port: u16) {
-    thread::spawn(move || {
-        let addr = format!("127.0.0.1:{}", port);
-        let listener = match TcpListener::bind(&addr) {
-            Ok(l) => l,
+/// @param port Local TCP port number to bind (pass 0 for automatic ephemeral port assignment).
+/// @return `Some(u16)` containing the actual bound port number, or `None` if binding failed.
+pub fn start_api_server(state: AppState, port: u16) -> Option<u16> {
+    let listener = if port > 0 {
+        match TcpListener::bind(format!("127.0.0.1:{}", port)) {
+            Ok(l) => Some(l),
             Err(e) => {
-                eprintln!("[API Server] Warning: Could not bind to {}: {}", addr, e);
-                return;
+                eprintln!("[API Server] Warning: Could not bind to 127.0.0.1:{}: {}. Falling back to ephemeral port.", port, e);
+                TcpListener::bind("127.0.0.1:0").ok()
             }
-        };
+        }
+    } else {
+        TcpListener::bind("127.0.0.1:0").ok()
+    }?;
 
+    let bound_port = listener.local_addr().ok()?.port();
+    println!("[API Server] Bound and listening on 127.0.0.1:{}", bound_port);
+
+    thread::spawn(move || {
         for stream in listener.incoming() {
             if !state.is_running.load(Ordering::Relaxed) {
                 break;
@@ -184,4 +191,6 @@ pub fn start_api_server(state: AppState, port: u16) {
             }
         }
     });
+
+    Some(bound_port)
 }
