@@ -126,6 +126,10 @@ pub struct MixerNode {
     pub mute_when_monitoring: bool,
     /// @brief Whether this node's underlying hardware endpoint is disconnected or offline.
     pub is_offline: bool,
+    /// @brief Whether noise gate DSP filter is active for this node.
+    pub noise_gate_enabled: bool,
+    /// @brief Noise gate threshold in dBFS (defaults to -45.0).
+    pub noise_gate_threshold_db: f32,
 }
 
 impl MixerNode {
@@ -146,6 +150,8 @@ impl MixerNode {
             is_monitor: false,
             mute_when_monitoring: false,
             is_offline: false,
+            noise_gate_enabled: false,
+            noise_gate_threshold_db: -45.0,
         }
     }
 
@@ -186,6 +192,16 @@ impl MixerNode {
     /// @return Modified MixerNode instance.
     pub fn with_offline(mut self, is_offline: bool) -> Self {
         self.is_offline = is_offline;
+        self
+    }
+
+    /// @brief Builder method to configure noise gate filtering for this node.
+    /// @param enabled Flag indicating whether the noise gate is active.
+    /// @param threshold_db Noise gate threshold in dBFS.
+    /// @return Modified MixerNode instance.
+    pub fn with_noise_gate(mut self, enabled: bool, threshold_db: f32) -> Self {
+        self.noise_gate_enabled = enabled;
+        self.noise_gate_threshold_db = threshold_db;
         self
     }
 }

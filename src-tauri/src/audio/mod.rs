@@ -6,6 +6,7 @@
 //! discovery, WASAPI process audio session scanners, pin routing matrices, virtual audio device
 //! cable managers, and real-time mixer pipelines.
 
+pub mod capture;
 pub mod devices;
 pub mod dsp;
 pub mod matrix;
@@ -15,6 +16,7 @@ pub mod ring_buffer;
 pub mod types;
 pub mod virtual_device;
 
+pub use capture::{spawn_microphone_capture_thread, LiveMeterTracker};
 pub use devices::{list_audio_devices, AudioDeviceDescriptor, AudioDeviceType};
 pub use dsp::{AutoDucker, NoiseGate};
 pub use matrix::{AudioPinId, ConnectionWire, MixerNode, RoutingMatrix};

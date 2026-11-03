@@ -18,6 +18,12 @@ fn default_gain() -> f32 {
     1.0
 }
 
+/// @brief Returns default noise gate threshold (-45.0 dBFS).
+/// @return Default noise gate threshold as `-45.0f32`.
+fn default_noise_gate_threshold() -> f32 {
+    -45.0
+}
+
 /// @brief Data transfer object representing a mixer node in the audio routing graph.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NodeDto {
@@ -49,6 +55,12 @@ pub struct NodeDto {
     /// @brief Whether this node's underlying hardware endpoint is disconnected or offline.
     #[serde(default)]
     pub is_offline: bool,
+    /// @brief Whether noise gate DSP filter is active for this node.
+    #[serde(default)]
+    pub noise_gate_enabled: bool,
+    /// @brief Noise gate threshold in dBFS (defaults to -45.0).
+    #[serde(default = "default_noise_gate_threshold")]
+    pub noise_gate_threshold_db: f32,
 }
 
 impl NodeDto {
@@ -75,6 +87,8 @@ impl NodeDto {
             is_monitor: false,
             mute_when_monitoring: false,
             is_offline: false,
+            noise_gate_enabled: false,
+            noise_gate_threshold_db: -45.0,
         }
     }
 }
@@ -95,6 +109,8 @@ impl From<&MixerNode> for NodeDto {
             is_monitor: node.is_monitor,
             mute_when_monitoring: node.mute_when_monitoring,
             is_offline: node.is_offline,
+            noise_gate_enabled: node.noise_gate_enabled,
+            noise_gate_threshold_db: node.noise_gate_threshold_db,
         }
     }
 }
@@ -119,6 +135,7 @@ impl From<&NodeDto> for MixerNode {
             .with_monitor(dto.is_monitor)
             .with_mute_when_monitoring(dto.mute_when_monitoring)
             .with_offline(dto.is_offline)
+            .with_noise_gate(dto.noise_gate_enabled, dto.noise_gate_threshold_db)
     }
 }
 

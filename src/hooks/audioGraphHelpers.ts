@@ -163,6 +163,8 @@ export function buildAudioGraphDto(
     is_monitor: n.data.isMonitor ?? false,
     mute_when_monitoring: n.data.muteWhenMonitoring ?? false,
     is_offline: n.data.isOffline ?? false,
+    noise_gate_enabled: n.data.noiseGateEnabled ?? false,
+    noise_gate_threshold_db: n.data.noiseGateThresholdDb ?? -45.0,
   }));
 
   const connectionDtos: ConnectionDto[] = edges.map((e) => ({

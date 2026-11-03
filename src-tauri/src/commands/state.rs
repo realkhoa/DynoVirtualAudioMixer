@@ -1,13 +1,16 @@
 //! @file state.rs
 //! @brief Thread-safe application state container and real-time peak meter telemetry extractor.
 //! @details Holds reference-counted read-write locks for the active audio routing matrix and virtual
-//! device manager, plus atomic flags controlling audio processing and background meter broadcasting.
+//! device manager, physical microphone capture worker, atomic flags controlling audio processing,
+//! and 60 FPS peak meter broadcast telemetry.
 
+use crate::audio::capture::{spawn_microphone_capture_thread, LiveMeterTracker};
 use crate::audio::matrix::RoutingMatrix;
 use crate::audio::types::MIN_PEAK_DB;
 use crate::audio::virtual_device::VirtualDeviceManager;
 use crate::commands::dto::{MeterUpdateDto, NodeMeterDto};
 use crate::presets::ProfileManager;
+use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -23,6 +26,8 @@ pub struct AppState {
     pub is_running: Arc<AtomicBool>,
     /// @brief Thread-safe handle to the preset profiles manager.
     pub profiles: Arc<RwLock<ProfileManager>>,
+    /// @brief Lock-free real-time peak meter tracker updated from the CPAL audio callback thread.
+    pub mic_tracker: Arc<LiveMeterTracker>,
 }
 
 impl Default for AppState {
@@ -34,14 +39,21 @@ impl Default for AppState {
 }
 
 impl AppState {
-    /// @brief Creates a new AppState instance with initialized routing matrix and virtual device manager.
+    /// @brief Creates a new AppState instance with initialized routing matrix, virtual device manager, and live mic capture.
     /// @return Initialized AppState instance.
     pub fn new() -> Self {
+        let mic_tracker = Arc::new(LiveMeterTracker::new());
+        let is_running = Arc::new(AtomicBool::new(true));
+
+        // Start live WASAPI microphone capture worker thread
+        spawn_microphone_capture_thread(mic_tracker.clone(), is_running.clone());
+
         Self {
             matrix: Arc::new(RwLock::new(RoutingMatrix::new())),
             virtual_devices: Arc::new(RwLock::new(VirtualDeviceManager::new())),
-            is_running: Arc::new(AtomicBool::new(true)),
+            is_running,
             profiles: Arc::new(RwLock::new(ProfileManager::default())),
+            mic_tracker,
         }
     }
 
@@ -53,11 +65,15 @@ impl AppState {
         matrix: RoutingMatrix,
         virtual_devices: VirtualDeviceManager,
     ) -> Self {
+        let mic_tracker = Arc::new(LiveMeterTracker::new());
+        let is_running = Arc::new(AtomicBool::new(true));
+
         Self {
             matrix: Arc::new(RwLock::new(matrix)),
             virtual_devices: Arc::new(RwLock::new(virtual_devices)),
-            is_running: Arc::new(AtomicBool::new(true)),
+            is_running,
             profiles: Arc::new(RwLock::new(ProfileManager::default())),
+            mic_tracker,
         }
     }
 
@@ -70,6 +86,7 @@ impl AppState {
             virtual_devices: self.virtual_devices,
             is_running: self.is_running,
             profiles: Arc::new(RwLock::new(manager)),
+            mic_tracker: self.mic_tracker,
         }
     }
 
@@ -122,8 +139,8 @@ impl AppState {
     }
 
     /// @brief Generates a real-time peak meter snapshot for all registered nodes in the matrix.
-    /// @details Queries current node volume, muting states, and channel layouts. Nodes that
-    /// are muted or have volume zero return digital silence floor (-60.0 dB).
+    /// @details Queries current live microphone hardware readings, evaluates wire connections
+    /// across the routing matrix, scales by volume faders and mute flags, and applies smooth decay ballistics.
     /// @return MeterUpdateDto with current timestamp and node peak readings.
     pub fn generate_meter_snapshot(&self) -> MeterUpdateDto {
         let timestamp_ms = SystemTime::now()
@@ -131,19 +148,85 @@ impl AppState {
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
 
-        let matrix_guard = self.matrix.read().unwrap();
+        let matrix_guard = match self.matrix.read() {
+            Ok(g) => g,
+            Err(_) => {
+                return MeterUpdateDto {
+                    timestamp_ms,
+                    meters: vec![],
+                }
+            }
+        };
+
+        // Extract and decay the live hardware microphone peak decibels (decay 1.2 dB per 60 FPS tick)
+        let (mic_db_l, mic_db_r) = self.mic_tracker.get_and_decay(1.2);
+
+        // Precalculate source node outputs (peak dB)
+        let mut source_peaks: HashMap<String, (f32, f32)> = HashMap::new();
+
+        for (node_id, node) in matrix_guard.nodes() {
+            if node.input_channels == 0 {
+                let (raw_l, raw_r) = if node.muted || node.is_offline || node.volume <= 0.001 {
+                    (MIN_PEAK_DB, MIN_PEAK_DB)
+                } else {
+                    let vol_gain_db = 20.0 * node.volume.log10();
+                    (
+                        (mic_db_l + vol_gain_db).clamp(MIN_PEAK_DB, 0.0),
+                        (mic_db_r + vol_gain_db).clamp(MIN_PEAK_DB, 0.0),
+                    )
+                };
+                source_peaks.insert(node_id.clone(), (raw_l, raw_r));
+            }
+        }
+
         let mut meters = Vec::with_capacity(matrix_guard.nodes().len());
 
         for (node_id, node) in matrix_guard.nodes() {
-            let (peak_left, peak_right) = if node.muted || node.volume <= 0.0 {
+            let (peak_left, peak_right) = if node.muted || node.is_offline || node.volume <= 0.001 {
                 (MIN_PEAK_DB, MIN_PEAK_DB)
+            } else if let Some(&(src_l, src_r)) = source_peaks.get(node_id) {
+                // Source node uses its calculated peak directly
+                (src_l, src_r)
             } else {
-                let db = if node.volume <= 0.001 {
-                    MIN_PEAK_DB
-                } else {
-                    (20.0 * node.volume.min(1.0).log10()).clamp(MIN_PEAK_DB, 0.0)
-                };
-                (db, db)
+                // Destination / Virtual / Output node: calculate peak sum of incoming connected wires
+                let mut max_in_l = MIN_PEAK_DB;
+                let mut max_in_r = MIN_PEAK_DB;
+
+                for wire in matrix_guard.wires().values() {
+                    if wire.destination.node_id == *node_id && !wire.muted {
+                        if let Some(&(src_l, src_r)) = source_peaks.get(&wire.source.node_id) {
+                            let wire_gain_db = if wire.gain <= 0.001 {
+                                MIN_PEAK_DB
+                            } else {
+                                20.0 * wire.gain.log10()
+                            };
+                            let in_signal = if wire.source.channel_index == 0 {
+                                src_l + wire_gain_db
+                            } else {
+                                src_r + wire_gain_db
+                            };
+
+                            if wire.destination.channel_index == 0 {
+                                if in_signal > max_in_l {
+                                    max_in_l = in_signal;
+                                }
+                            } else if in_signal > max_in_r {
+                                max_in_r = in_signal;
+                            }
+                        }
+                    }
+                }
+
+                // If mono destination, mirror Left to Right
+                if node.input_channels == 1 && max_in_r == MIN_PEAK_DB {
+                    max_in_r = max_in_l;
+                }
+
+                let vol_gain_db = 20.0 * node.volume.log10();
+                (
+                    (max_in_l + vol_gain_db).clamp(MIN_PEAK_DB, 0.0),
+                    (max_in_r + vol_gain_db).clamp(MIN_PEAK_DB, 0.0),
+                )
             };
 
             meters.push(NodeMeterDto {

@@ -161,6 +161,10 @@ export interface NodeDto {
   mute_when_monitoring?: boolean;
   /** @brief Whether the endpoint hardware is offline. */
   is_offline?: boolean;
+  /** @brief Whether noise gate DSP filter is active. */
+  noise_gate_enabled?: boolean;
+  /** @brief Noise gate threshold in dBFS. */
+  noise_gate_threshold_db?: number;
 }
 
 /**

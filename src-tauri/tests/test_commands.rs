@@ -28,6 +28,8 @@ fn test_node_and_connection_dto_serialization() {
         is_monitor: false,
         mute_when_monitoring: false,
         is_offline: false,
+        noise_gate_enabled: false,
+        noise_gate_threshold_db: -45.0,
     };
     let node_json = serde_json::to_string(&node_dto).expect("NodeDto should serialize cleanly");
     assert!(node_json.contains("node_spotify"));
@@ -108,6 +110,8 @@ fn create_test_graph_dto() -> AudioGraphDto {
         is_monitor: false,
         mute_when_monitoring: false,
         is_offline: false,
+        noise_gate_enabled: false,
+        noise_gate_threshold_db: -45.0,
     };
     let node2 = NodeDto {
         id: "dst_1".to_string(),
@@ -120,6 +124,8 @@ fn create_test_graph_dto() -> AudioGraphDto {
         is_monitor: false,
         mute_when_monitoring: false,
         is_offline: false,
+        noise_gate_enabled: false,
+        noise_gate_threshold_db: -45.0,
     };
     let wire = ConnectionDto::new("wire_mic_to_hp", "src_1", 0, "dst_1", 0, 0.8);
     AudioGraphDto::new(vec![node1, node2], vec![wire])

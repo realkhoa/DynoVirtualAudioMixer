@@ -15,6 +15,7 @@ Key responsibilities:
 - **`AudioPinId` / `ConnectionWire` / `MixerNode`**: Topological primitives for graph-based audio patchbays with node volumes, wire gains, and granular muting.
 - **`RoutingMatrix`**: Arbitrary multichannel routing matrix handling 1-to-1 direct routing, stereo downmixing, mono channel splitting, volume scaling, muting, and smooth soft saturation.
 - **`AudioMixerEngine`**: Central mixing pipeline coordinating staged source buffers and matrix evaluation to produce destination render frames.
+- **`LiveMeterTracker` / `spawn_microphone_capture_thread`**: Thread-isolated live WASAPI microphone capture service continuously reading physical microphone input streams via CPAL and updating an atomic lock-free peak meter tracker for real-time VU metering.
 
 ## 2. Prerequisites & Dependencies
 - **Rust Edition**: 2021
@@ -69,6 +70,16 @@ Key responsibilities:
 | `MixerNode` | Represents audio source, sub-mix, or output node (`id: String`, `name: String`, `volume: f32`, `muted: bool`, `input_channels: u16`, `output_channels: u16`). |
 | `RoutingMatrix` | Graph manager with `add_node`, `remove_node`, `connect`, `disconnect`, `process_frame`. Handles gain scaling, muting, channel mapping, and soft saturation. |
 | `AudioMixerEngine` | Pipeline coordinating input staging buffers and routing matrix evaluation (`submit_input`, `process_destination`, `render_all`, `clear_inputs`). |
+
+### Live Microphone Capture & Real-Time Metering (`capture.rs`)
+| Type / Function | Description |
+|---|---|
+| `LiveMeterTracker` | Lock-free peak meter tracker using `AtomicU32` float bitcasting (`update`, `get_and_decay`, `peek`). |
+| `spawn_microphone_capture_thread(tracker, is_running)` | Spawns dedicated thread owning CPAL WASAPI input stream, streaming live mic PCM buffers into `LiveMeterTracker`. |
+| `process_f32_samples(data, channels, tracker)` | Analyzes f32 PCM samples, calculates peak amplitude, converts to dBFS, updates tracker with instant attack. |
+| `process_i16_samples(data, channels, tracker)` | Analyzes normalized 16-bit PCM integer samples and updates tracker. |
+| `process_u16_samples(data, channels, tracker)` | Analyzes normalized 16-bit unsigned PCM samples and updates tracker. |
+| `linear_to_db(linear) -> f32` | Converts linear amplitude scale (0.0 to 1.0) into clamped decibels `[-60.0, 0.0]`. |
 
 ## 4. Usage Examples
 
