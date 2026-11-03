@@ -16,14 +16,23 @@ on:
 permissions:
   contents: write
 
+env:
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+
 jobs:
   test-and-build:
     name: Test & Build Windows Release
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+          vsversion: '2022'
 
       - name: Setup Bun runtime
         uses: oven-sh/setup-bun@v2
@@ -32,6 +41,8 @@ jobs:
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
 
       - name: Setup Rust Cache
         uses: swatinem/rust-cache@v2
