@@ -11,7 +11,7 @@ pub mod state;
 pub use dto::{AudioGraphDto, ConnectionDto, MeterUpdateDto, NodeDto, NodeMeterDto};
 pub use handlers::{
     create_virtual_device, delete_profile, get_devices, get_running_apps, get_virtual_devices,
-    list_profiles, load_profile, remove_virtual_device, save_profile, set_node_volume,
-    start_meter_stream, update_routing_graph,
+    list_profiles, load_profile, remove_virtual_device, save_profile, set_node_monitor_mode,
+    set_node_volume, set_wire_config, start_meter_stream, update_routing_graph,
 };
 pub use state::AppState;

@@ -1,6 +1,7 @@
 /**
  * @file CreateVirtualModal.tsx
  * @brief Modal dialog facilitating the creation and configuration of virtual audio cable buses.
+ * @details Supports multi-channel virtual device allocation (2, 4, 8, 16 channels) for DAWs and multi-track recording.
  */
 
 import React, { useState } from "react";
@@ -13,7 +14,7 @@ import type { VirtualDeviceDescriptor } from "../../types/audio";
  */
 export interface CreateVirtualModalProps {
   /** @brief Callback when a virtual device is successfully configured. */
-  onCreate: (name: string, driverType: string) => void;
+  onCreate: (name: string, driverType: string, channels: number) => void;
   /** @brief Callback to close the modal. */
   onClose: () => void;
 }
@@ -29,6 +30,7 @@ export function CreateVirtualModal({
 }: CreateVirtualModalProps): React.JSX.Element {
   const [virtualName, setVirtualName] = useState("");
   const [virtualDriver, setVirtualDriver] = useState("SoftwareLoopbackEndpoint");
+  const [channelCount, setChannelCount] = useState<number>(2);
 
   /**
    * @brief Handles form submission and backend registration.
@@ -42,12 +44,13 @@ export function CreateVirtualModal({
       await invoke<VirtualDeviceDescriptor>("create_virtual_device", {
         name: trimmed,
         cableType: virtualDriver,
+        channels: channelCount,
       });
     } catch {
       // In standalone browser mode, proceed with frontend creation
     }
 
-    onCreate(trimmed, virtualDriver);
+    onCreate(trimmed, virtualDriver, channelCount);
     setVirtualName("");
     onClose();
   };
@@ -86,6 +89,22 @@ export function CreateVirtualModal({
 
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1.5">
+              Channel Configuration
+            </label>
+            <select
+              value={channelCount}
+              onChange={(e) => setChannelCount(parseInt(e.target.value, 10))}
+              className="w-full px-3 py-2 rounded-lg bg-slate-950/80 border border-slate-700 text-xs text-white focus:outline-none focus:border-violet-500"
+            >
+              <option value={2}>Stereo (2 Channels - Standard L/R)</option>
+              <option value={4}>Quad (4 Channels - Multi-source / Podcast)</option>
+              <option value={8}>8 Channels (Surround 7.1 / Multi-track)</option>
+              <option value={16}>16 Channels (Professional DAW Sub-bus)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1.5">
               Driver Technology
             </label>
             <select
@@ -111,7 +130,7 @@ export function CreateVirtualModal({
             </button>
             <button
               type="submit"
-              className="px-4 py-1.5 rounded-lg text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white shadow-md transition-all"
+              className="px-4 py-1.5 rounded-lg text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white shadow-md transition-all cursor-pointer"
             >
               Create &amp; Add Bus
             </button>

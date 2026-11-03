@@ -55,6 +55,10 @@ pub struct ConnectionWire {
     pub gain: f32,
     /// @brief Whether this connection wire is currently muted.
     pub muted: bool,
+    /// @brief Whether to invert the phase of audio samples passing through this wire (-1.0x).
+    pub phase_invert: bool,
+    /// @brief Whether this wire serves as a monitoring tap to a personal listening endpoint.
+    pub is_monitor: bool,
 }
 
 impl ConnectionWire {
@@ -65,7 +69,15 @@ impl ConnectionWire {
     /// @param gain Linear gain multiplier.
     /// @return A new ConnectionWire instance.
     pub fn new(id: impl Into<String>, source: AudioPinId, destination: AudioPinId, gain: f32) -> Self {
-        Self { id: id.into(), source, destination, gain, muted: false }
+        Self {
+            id: id.into(),
+            source,
+            destination,
+            gain,
+            muted: false,
+            phase_invert: false,
+            is_monitor: false,
+        }
     }
 
     /// @brief Builder method to set the mute state of this connection wire.
@@ -73,6 +85,22 @@ impl ConnectionWire {
     /// @return Modified ConnectionWire instance.
     pub fn muted(mut self, muted: bool) -> Self {
         self.muted = muted;
+        self
+    }
+
+    /// @brief Builder method to configure phase inversion on this connection wire.
+    /// @param invert Flag indicating whether to invert audio phase.
+    /// @return Modified ConnectionWire instance.
+    pub fn with_phase_invert(mut self, invert: bool) -> Self {
+        self.phase_invert = invert;
+        self
+    }
+
+    /// @brief Builder method to configure monitor tap status on this connection wire.
+    /// @param is_monitor Flag indicating whether wire is a monitor tap.
+    /// @return Modified ConnectionWire instance.
+    pub fn with_monitor(mut self, is_monitor: bool) -> Self {
+        self.is_monitor = is_monitor;
         self
     }
 }
@@ -92,6 +120,12 @@ pub struct MixerNode {
     pub input_channels: u16,
     /// @brief Number of output audio channels supported.
     pub output_channels: u16,
+    /// @brief Whether this node represents a personal listening monitor endpoint.
+    pub is_monitor: bool,
+    /// @brief Whether this monitor node suppresses original local audio when monitoring is active.
+    pub mute_when_monitoring: bool,
+    /// @brief Whether this node's underlying hardware endpoint is disconnected or offline.
+    pub is_offline: bool,
 }
 
 impl MixerNode {
@@ -102,7 +136,17 @@ impl MixerNode {
     /// @param output_channels Number of output channels.
     /// @return A new MixerNode instance.
     pub fn new(id: impl Into<String>, name: impl Into<String>, input_channels: u16, output_channels: u16) -> Self {
-        Self { id: id.into(), name: name.into(), volume: 1.0, muted: false, input_channels, output_channels }
+        Self {
+            id: id.into(),
+            name: name.into(),
+            volume: 1.0,
+            muted: false,
+            input_channels,
+            output_channels,
+            is_monitor: false,
+            mute_when_monitoring: false,
+            is_offline: false,
+        }
     }
 
     /// @brief Builder method to configure node linear volume gain.
@@ -120,6 +164,30 @@ impl MixerNode {
         self.muted = muted;
         self
     }
+
+    /// @brief Builder method to configure monitor status for this node.
+    /// @param is_monitor Flag indicating if node is a personal monitor endpoint.
+    /// @return Modified MixerNode instance.
+    pub fn with_monitor(mut self, is_monitor: bool) -> Self {
+        self.is_monitor = is_monitor;
+        self
+    }
+
+    /// @brief Builder method to configure mute-when-monitoring behavior.
+    /// @param mute_when_monitoring Flag indicating whether to mute original stream during monitoring.
+    /// @return Modified MixerNode instance.
+    pub fn with_mute_when_monitoring(mut self, mute_when_monitoring: bool) -> Self {
+        self.mute_when_monitoring = mute_when_monitoring;
+        self
+    }
+
+    /// @brief Builder method to configure offline status for disconnected endpoints.
+    /// @param is_offline Flag indicating if endpoint hardware is offline.
+    /// @return Modified MixerNode instance.
+    pub fn with_offline(mut self, is_offline: bool) -> Self {
+        self.is_offline = is_offline;
+        self
+    }
 }
 
 /// @brief Multi-channel audio routing matrix and sample mixing engine.
@@ -131,6 +199,8 @@ pub struct RoutingMatrix {
     wires: HashMap<String, ConnectionWire>,
     /// @brief Controls whether hyperbolic tangent soft-limiting is applied when samples exceed ±1.0.
     soft_limiter: bool,
+    /// @brief Optional fallback destination node ID when a target endpoint is disconnected.
+    fallback_node_id: Option<String>,
 }
 
 impl Default for RoutingMatrix {
@@ -145,7 +215,33 @@ impl RoutingMatrix {
     /// @brief Creates an empty RoutingMatrix with soft-limiting enabled by default.
     /// @return A new empty RoutingMatrix instance.
     pub fn new() -> Self {
-        Self { nodes: HashMap::new(), wires: HashMap::new(), soft_limiter: true }
+        Self {
+            nodes: HashMap::new(),
+            wires: HashMap::new(),
+            soft_limiter: true,
+            fallback_node_id: None,
+        }
+    }
+
+    /// @brief Configures the optional fallback output destination node ID.
+    /// @param node_id Fallback node ID or None to disable.
+    pub fn set_fallback_node_id(&mut self, node_id: Option<String>) {
+        self.fallback_node_id = node_id;
+    }
+
+    /// @brief Returns the configured fallback output destination node ID if any.
+    /// @return Optional string slice with fallback node ID.
+    pub fn fallback_node_id(&self) -> Option<&str> {
+        self.fallback_node_id.as_deref()
+    }
+
+    /// @brief Configures whether a specific node is offline / disconnected from hardware.
+    /// @param node_id Unique identifier of the target node.
+    /// @param offline Whether the endpoint hardware is offline.
+    pub fn set_node_offline(&mut self, node_id: &str, offline: bool) {
+        if let Some(node) = self.nodes.get_mut(node_id) {
+            node.is_offline = offline;
+        }
     }
 
     /// @brief Registers a mixer node in the routing matrix.
@@ -258,10 +354,28 @@ impl RoutingMatrix {
             2
         };
 
+        if dest_node.is_offline {
+            return AudioChunk::silence(0, dest_channels, 48000);
+        }
+
+        let is_fallback_target = self.fallback_node_id.as_deref() == Some(destination_node_id);
         let incoming_wires: Vec<&ConnectionWire> = self
             .wires
             .values()
-            .filter(|wire| wire.destination.node_id == destination_node_id && !wire.muted)
+            .filter(|wire| {
+                if wire.muted {
+                    return false;
+                }
+                if wire.destination.node_id == destination_node_id {
+                    return true;
+                }
+                if is_fallback_target {
+                    if let Some(target) = self.nodes.get(&wire.destination.node_id) {
+                        return target.is_offline;
+                    }
+                }
+                false
+            })
             .collect();
 
         let mut target_frame_count = 0usize;
@@ -321,7 +435,8 @@ impl RoutingMatrix {
                         let sample_idx = frame_idx * src_channels + src_ch_idx;
                         let raw_sample = src_chunk.samples[sample_idx];
                         let src_vol = src_node.map(|s| s.volume).unwrap_or(1.0);
-                        sum += raw_sample * wire.gain * src_vol;
+                        let phase_scale = if wire.phase_invert { -1.0 } else { 1.0 };
+                        sum += raw_sample * wire.gain * src_vol * phase_scale;
                     }
                 }
 

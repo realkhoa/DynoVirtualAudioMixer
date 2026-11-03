@@ -7,6 +7,9 @@
 /// @brief Core audio processing engine, lock-free ring buffers, and DSP primitives.
 pub mod audio;
 
+/// @brief Embedded HTTP REST API server for Stream Deck and OBS integration.
+pub mod api_server;
+
 /// @brief Tauri IPC command handlers, application state, DTOs, and 60 FPS meter broadcaster.
 pub mod commands;
 
@@ -16,11 +19,13 @@ pub mod presets;
 /// @brief Windows notification system tray icon and background execution lifecycle.
 pub mod tray;
 
+use tauri::Manager;
+
 pub use commands::{
     create_virtual_device, delete_profile, get_devices, get_running_apps, get_virtual_devices,
-    list_profiles, load_profile, remove_virtual_device, save_profile, set_node_volume,
-    start_meter_stream, update_routing_graph, AppState, AudioGraphDto, ConnectionDto,
-    MeterUpdateDto, NodeDto, NodeMeterDto,
+    list_profiles, load_profile, remove_virtual_device, save_profile, set_node_monitor_mode,
+    set_node_volume, set_wire_config, start_meter_stream, update_routing_graph, AppState,
+    AudioGraphDto, ConnectionDto, MeterUpdateDto, NodeDto, NodeMeterDto,
 };
 pub use presets::{ProfileManager, ProfilePreset};
 
@@ -38,6 +43,8 @@ pub fn run() {
         .setup(|app| {
             tray::setup_tray(app)?;
             commands::start_meter_stream(app.handle().clone());
+            let state = app.state::<commands::AppState>();
+            api_server::start_api_server(state.inner().clone(), api_server::DEFAULT_API_PORT);
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -54,6 +61,8 @@ pub fn run() {
             commands::handlers::remove_virtual_device,
             commands::handlers::update_routing_graph,
             commands::handlers::set_node_volume,
+            commands::handlers::set_wire_config,
+            commands::handlers::set_node_monitor_mode,
             commands::handlers::start_meter_stream,
             commands::handlers::save_profile,
             commands::handlers::load_profile,

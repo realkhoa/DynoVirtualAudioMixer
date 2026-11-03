@@ -42,12 +42,14 @@ pub fn get_virtual_devices(
 /// @param state Tauri application state container.
 /// @param name User-defined friendly name for the virtual audio device.
 /// @param cable_type Optional driver technology string ("vbcable", "vac", or "software_loopback").
+/// @param channels Optional channel count (e.g. 2 for stereo, 4 for quad, 8 for multitrack, defaults to 2).
 /// @return `Ok(VirtualDeviceDescriptor)` on successful creation, or `Err(String)` on validation error.
 #[tauri::command]
 pub fn create_virtual_device(
     state: State<'_, AppState>,
     name: String,
     cable_type: Option<String>,
+    channels: Option<u16>,
 ) -> Result<VirtualDeviceDescriptor, String> {
     let driver = match cable_type.as_deref().map(|s| s.to_lowercase()) {
         Some(ref s) if s.contains("vb") => VirtualCableType::VBCable,
@@ -57,8 +59,9 @@ pub fn create_virtual_device(
         _ => VirtualCableType::SoftwareLoopbackEndpoint,
     };
 
+    let ch = channels.unwrap_or(2);
     let mut vdevs = state.write_virtual_devices()?;
-    vdevs.create_virtual_device(&name, driver)
+    vdevs.create_virtual_device_with_channels(&name, driver, ch)
 }
 
 /// @brief Tauri command to remove a registered virtual audio device by its unique ID.
@@ -102,6 +105,55 @@ pub fn set_node_volume(
     if let Some(node) = matrix.get_node_mut(&node_id) {
         node.volume = volume;
         node.muted = muted;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// @brief Tauri command to configure gain, mute, and phase inversion on an individual connection wire.
+/// @param state Tauri application state container.
+/// @param wire_id Unique identifier of the target connection wire.
+/// @param gain Linear gain scale multiplier (e.g. 1.0 for unity gain, 0.5 for -6dB).
+/// @param muted Whether the wire is muted.
+/// @param phase_invert Whether to invert the phase of audio passing through this wire (-1.0x).
+/// @return `Ok(true)` if updated, `Ok(false)` if wire not found, or `Err(String)` on lock error.
+#[tauri::command]
+pub fn set_wire_config(
+    state: State<'_, AppState>,
+    wire_id: String,
+    gain: f32,
+    muted: bool,
+    phase_invert: bool,
+) -> Result<bool, String> {
+    let mut matrix = state.write_matrix()?;
+    if let Some(wire) = matrix.get_wire_mut(&wire_id) {
+        wire.gain = gain;
+        wire.muted = muted;
+        wire.phase_invert = phase_invert;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// @brief Tauri command to configure personal monitor and mute-when-monitoring status on an endpoint node.
+/// @param state Tauri application state container.
+/// @param node_id Unique identifier of the target endpoint node.
+/// @param is_monitor Whether the node serves as a personal listening monitor.
+/// @param mute_when_monitoring Whether to mute original stream when monitoring is active.
+/// @return `Ok(true)` if updated, `Ok(false)` if node not found, or `Err(String)` on lock error.
+#[tauri::command]
+pub fn set_node_monitor_mode(
+    state: State<'_, AppState>,
+    node_id: String,
+    is_monitor: bool,
+    mute_when_monitoring: bool,
+) -> Result<bool, String> {
+    let mut matrix = state.write_matrix()?;
+    if let Some(node) = matrix.get_node_mut(&node_id) {
+        node.is_monitor = is_monitor;
+        node.mute_when_monitoring = mute_when_monitoring;
         Ok(true)
     } else {
         Ok(false)

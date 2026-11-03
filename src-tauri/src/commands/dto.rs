@@ -40,6 +40,15 @@ pub struct NodeDto {
     /// @brief Number of output audio channels supported.
     #[serde(default)]
     pub output_channels: u16,
+    /// @brief Whether this node represents a personal listening monitor endpoint.
+    #[serde(default)]
+    pub is_monitor: bool,
+    /// @brief Whether this monitor node suppresses original local audio when monitoring is active.
+    #[serde(default)]
+    pub mute_when_monitoring: bool,
+    /// @brief Whether this node's underlying hardware endpoint is disconnected or offline.
+    #[serde(default)]
+    pub is_offline: bool,
 }
 
 impl NodeDto {
@@ -63,6 +72,9 @@ impl NodeDto {
             muted: false,
             input_channels,
             output_channels,
+            is_monitor: false,
+            mute_when_monitoring: false,
+            is_offline: false,
         }
     }
 }
@@ -80,6 +92,9 @@ impl From<&MixerNode> for NodeDto {
             muted: node.muted,
             input_channels: node.input_channels,
             output_channels: node.output_channels,
+            is_monitor: node.is_monitor,
+            mute_when_monitoring: node.mute_when_monitoring,
+            is_offline: node.is_offline,
         }
     }
 }
@@ -101,6 +116,9 @@ impl From<&NodeDto> for MixerNode {
         MixerNode::new(&dto.id, &dto.name, dto.input_channels, dto.output_channels)
             .with_volume(dto.volume)
             .with_muted(dto.muted)
+            .with_monitor(dto.is_monitor)
+            .with_mute_when_monitoring(dto.mute_when_monitoring)
+            .with_offline(dto.is_offline)
     }
 }
 
@@ -141,6 +159,12 @@ pub struct ConnectionDto {
     /// @brief Whether this connection wire is currently muted.
     #[serde(default)]
     pub muted: bool,
+    /// @brief Whether to invert the phase of audio samples passing through this wire.
+    #[serde(default)]
+    pub phase_invert: bool,
+    /// @brief Whether this wire is configured as a monitoring tap.
+    #[serde(default)]
+    pub is_monitor: bool,
 }
 
 impl ConnectionDto {
@@ -168,6 +192,8 @@ impl ConnectionDto {
             destination_channel,
             gain,
             muted: false,
+            phase_invert: false,
+            is_monitor: false,
         }
     }
 }
@@ -185,6 +211,8 @@ impl From<&ConnectionWire> for ConnectionDto {
             destination_channel: wire.destination.channel_index,
             gain: wire.gain,
             muted: wire.muted,
+            phase_invert: wire.phase_invert,
+            is_monitor: wire.is_monitor,
         }
     }
 }
@@ -209,6 +237,8 @@ impl From<&ConnectionDto> for ConnectionWire {
             destination: AudioPinId::new(&dto.destination_node_id, dto.destination_channel),
             gain: dto.gain,
             muted: dto.muted,
+            phase_invert: dto.phase_invert,
+            is_monitor: dto.is_monitor,
         }
     }
 }

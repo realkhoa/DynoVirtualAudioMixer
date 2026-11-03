@@ -117,6 +117,16 @@ export interface AudioNodeData {
   leftLevelDb: number;
   /** @brief Right channel peak decibel level clamped between -60 dBFS and 0 dBFS. */
   rightLevelDb: number;
+  /** @brief Whether this node serves as a personal listening monitor. */
+  isMonitor?: boolean;
+  /** @brief Whether to mute original local sound when monitoring is active. */
+  muteWhenMonitoring?: boolean;
+  /** @brief Whether the underlying hardware endpoint is currently disconnected. */
+  isOffline?: boolean;
+  /** @brief Whether the noise gate filter is enabled for this input. */
+  noiseGateEnabled?: boolean;
+  /** @brief Noise gate threshold in dBFS (e.g. -45 dBFS). */
+  noiseGateThresholdDb?: number;
   /** @brief Optional callback fired when the volume slider is adjusted. */
   onVolumeChange?: (id: string, volume: number) => void;
   /** @brief Optional callback fired when the mute state is toggled. */
@@ -145,6 +155,12 @@ export interface NodeDto {
   input_channels: number;
   /** @brief Output channel count. */
   output_channels: number;
+  /** @brief Whether this node serves as a personal listening monitor. */
+  is_monitor?: boolean;
+  /** @brief Whether to mute original stream when monitoring is active. */
+  mute_when_monitoring?: boolean;
+  /** @brief Whether the endpoint hardware is offline. */
+  is_offline?: boolean;
 }
 
 /**
@@ -165,6 +181,30 @@ export interface ConnectionDto {
   gain: number;
   /** @brief Whether this connection wire is muted. */
   muted: boolean;
+  /** @brief Whether to invert the phase of audio passing through this wire (-1.0x). */
+  phase_invert?: boolean;
+  /** @brief Whether this wire is configured as a monitor tap. */
+  is_monitor?: boolean;
+}
+
+/**
+ * @brief Configuration descriptor for sidechain auto-ducking between voice and media channels.
+ */
+export interface AutoDuckerConfig {
+  /** @brief Node ID of the voice trigger (e.g. Host Microphone). */
+  trigger_node_id: string;
+  /** @brief Array of target node IDs to attenuate (e.g. Spotify, Game). */
+  target_node_ids: string[];
+  /** @brief Voice detection threshold in dBFS (e.g. -35 dBFS). */
+  threshold_db: number;
+  /** @brief Attenuation applied to targets in dB (e.g. -15 dB). */
+  duck_attenuation_db: number;
+  /** @brief Attack ramp time in milliseconds. */
+  attack_ms: number;
+  /** @brief Release ramp time in milliseconds. */
+  release_ms: number;
+  /** @brief Whether auto-ducking is enabled. */
+  enabled: boolean;
 }
 
 /**

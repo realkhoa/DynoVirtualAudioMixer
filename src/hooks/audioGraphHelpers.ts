@@ -5,9 +5,11 @@
  * edge removal from collections, and conversion between React Flow topologies and backend AudioGraphDto schemas.
  */
 
+import { invoke } from "@tauri-apps/api/core";
 import type { Connection, Edge, Node } from "@xyflow/react";
-import type { AudioNodeData, AudioGraphDto, ConnectionDto, NodeDto } from "../types/audio";
-import { parseChannelIndex } from "../components/canvas/initialGraph";
+import type { AudioNodeData, AudioGraphDto, ConnectionDto, NodeDto, AudioDeviceDescriptor } from "../types/audio";
+import { parseChannelIndex, createDefaultHardwareGraph } from "../components/canvas/initialGraph";
+import type { NodeHandlers } from "../components/canvas/nodeFactory";
 
 /**
  * @brief Determines if a given handle identifier represents a Left audio channel (channel 0).
@@ -158,6 +160,9 @@ export function buildAudioGraphDto(
     muted: n.data.muted,
     input_channels: n.data.inputChannels,
     output_channels: n.data.outputChannels,
+    is_monitor: n.data.isMonitor ?? false,
+    mute_when_monitoring: n.data.muteWhenMonitoring ?? false,
+    is_offline: n.data.isOffline ?? false,
   }));
 
   const connectionDtos: ConnectionDto[] = edges.map((e) => ({
@@ -166,12 +171,78 @@ export function buildAudioGraphDto(
     source_channel: parseChannelIndex(e.sourceHandle),
     destination_node_id: e.target,
     destination_channel: parseChannelIndex(e.targetHandle),
-    gain: 1.0,
-    muted: false,
+    gain: typeof (e.data as any)?.gain === "number" ? (e.data as any).gain : 1.0,
+    muted: Boolean((e.data as any)?.muted),
+    phase_invert: Boolean((e.data as any)?.phaseInvert),
+    is_monitor: Boolean((e.data as any)?.isMonitor),
   }));
 
   return {
     nodes: nodeDtos,
     connections: connectionDtos,
   };
+}
+
+/**
+ * @brief LocalStorage cache key for persisting graph topology between app restarts.
+ */
+export const STORAGE_KEY = "dyno_mixer_graph_state_v2";
+
+/**
+ * @brief Attempts to load persisted graph topology from browser localStorage.
+ * @return {{ nodes: Node<AudioNodeData>[]; edges: Edge[] } | null} Restored graph or null.
+ */
+export function loadPersistedGraph(): { nodes: Node<AudioNodeData>[]; edges: Edge[] } | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.nodes) && Array.isArray(parsed?.edges)) {
+      return { nodes: parsed.nodes, edges: parsed.edges };
+    }
+  } catch {
+    // Ignore storage parse errors
+  }
+  return null;
+}
+
+/**
+ * @brief Persists current graph topology into browser localStorage.
+ * @param nodes Current nodes array.
+ * @param edges Current edges array.
+ */
+export function savePersistedGraph(
+  nodes: Node<AudioNodeData>[],
+  edges: Edge[]
+): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges }));
+  } catch {
+    // Ignore storage write errors
+  }
+}
+
+/**
+ * @brief Queries hardware devices from backend and constructs default hardware patch graph.
+ * @param nodeHandlers Node lifecycle handlers.
+ * @param onDelete Edge deletion handler.
+ * @return Constructed nodes and edges or null.
+ */
+export async function fetchDefaultHardwareGraph(
+  nodeHandlers: NodeHandlers,
+  onDelete: (edgeId: string) => void
+): Promise<{ nodes: Node<AudioNodeData>[]; edges: Edge[] } | null> {
+  try {
+    const realDevices = await invoke<AudioDeviceDescriptor[]>("get_devices");
+    if (Array.isArray(realDevices) && realDevices.length > 0) {
+      const { nodes: hwNodes, edges: hwEdges } = createDefaultHardwareGraph(realDevices);
+      return {
+        nodes: hwNodes.map((n) => ({ ...n, data: { ...n.data, ...nodeHandlers } })),
+        edges: hwEdges.map((e) => ({ ...e, data: { ...e.data, onDelete } })),
+      };
+    }
+  } catch {
+    // Fallback if outside Tauri
+  }
+  return null;
 }

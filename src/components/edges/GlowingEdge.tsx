@@ -142,6 +142,28 @@ export function GlowingEdge({
     [id, data, setEdges]
   );
 
+  const wireGain = typeof data?.gain === "number" ? (data.gain as number) : 1.0;
+  const isMuted = Boolean(data?.muted);
+  const isPhaseInverted = Boolean(data?.phaseInvert);
+  const hasCustomProps = (wireGain !== 1.0 && wireGain > 0) || isMuted || isPhaseInverted;
+
+  const gainDbText = useMemo(() => {
+    if (wireGain <= 0.001) return "-∞dB";
+    const db = 20.0 * Math.log10(wireGain);
+    return `${db > 0 ? "+" : ""}${db.toFixed(0)}dB`;
+  }, [wireGain]);
+
+  const handleInspect = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      const customOnInspect = data?.onInspect as ((edgeId: string) => void) | undefined;
+      if (customOnInspect) {
+        customOnInspect(id);
+      }
+    },
+    [id, data]
+  );
+
   const buttonBaseClass =
     "w-5 h-5 rounded-full bg-slate-950/90 border border-slate-700/80 text-slate-400 " +
     "hover:text-rose-400 hover:border-rose-500/80 hover:bg-slate-900 transition-all " +
@@ -154,6 +176,7 @@ export function GlowingEdge({
         className="group/edge cursor-pointer"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
+        onClick={handleInspect}
       >
         {/* Invisible expanded hit-box for smooth hover interactions */}
         <path
@@ -193,7 +216,7 @@ export function GlowingEdge({
         />
       </g>
 
-      {/* Mid-point interactive disconnect pill */}
+      {/* Mid-point interactive controls and property badges */}
       <EdgeLabelRenderer>
         <div
           style={{
@@ -201,10 +224,33 @@ export function GlowingEdge({
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
             pointerEvents: "all",
           }}
-          className="nodrag nopan"
+          className="nodrag nopan flex items-center gap-1.5"
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
         >
+          {/* Wire Inspector trigger pill */}
+          {(hasCustomProps || isHovered) && (
+            <button
+              type="button"
+              onClick={handleInspect}
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/90 border border-slate-700/80 text-[10px] font-mono text-cyan-300 hover:border-cyan-500 shadow-md backdrop-blur-sm cursor-pointer transition-all"
+              title="Click to inspect wire gain and phase"
+            >
+              {isPhaseInverted && (
+                <span className="font-serif font-bold text-amber-400">Ø</span>
+              )}
+              {isMuted && (
+                <span className="text-rose-400 font-semibold">MUTE</span>
+              )}
+              {wireGain !== 1.0 && !isMuted && (
+                <span>{gainDbText}</span>
+              )}
+              {!hasCustomProps && isHovered && (
+                <span className="text-slate-400">inspect</span>
+              )}
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleDelete}

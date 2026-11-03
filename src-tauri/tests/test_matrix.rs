@@ -318,3 +318,114 @@ fn test_audio_mixer_engine_pipeline() {
     assert!((rendered.samples[2] - 0.4).abs() < 1e-5);
     assert!((rendered.samples[3] - 0.8).abs() < 1e-5);
 }
+
+/// @brief Tests wire gain attenuation and 180-degree phase inversion (`phase_invert`).
+/// @return Returns `()` on assertion success.
+#[test]
+fn test_wire_phase_inversion_and_attenuation() {
+    let mut matrix = RoutingMatrix::new();
+    let src = MixerNode::new("src_tone", "Tone Generator", 0, 1).with_volume(1.0);
+    let dst = MixerNode::new("dst_out", "Output", 1, 1).with_volume(1.0);
+    matrix.add_node(src);
+    matrix.add_node(dst);
+
+    let mut wire = ConnectionWire::new(
+        "wire_inverted",
+        AudioPinId::new("src_tone", 0),
+        AudioPinId::new("dst_out", 0),
+        0.5,
+    );
+    wire.phase_invert = true;
+    matrix.connect(wire);
+
+    let mut engine = AudioMixerEngine::new(48000);
+    *engine.matrix_mut() = matrix;
+    let chunk = AudioChunk::new(vec![0.8, -0.4, 0.2], 1, 48000);
+    engine.submit_input("src_tone", chunk);
+
+    let output_chunk = engine.process_destination("dst_out");
+    // Expected: 0.8 * 0.5 * -1.0 = -0.4; -0.4 * 0.5 * -1.0 = 0.2; 0.2 * 0.5 * -1.0 = -0.1
+    assert!((output_chunk.samples[0] - (-0.4)).abs() < 1e-4);
+    assert!((output_chunk.samples[1] - 0.2).abs() < 1e-4);
+    assert!((output_chunk.samples[2] - (-0.1)).abs() < 1e-4);
+}
+
+/// @brief Tests dedicated monitor nodes and mute-when-monitoring behavior.
+/// @return Returns `()` on assertion success.
+#[test]
+fn test_mute_when_monitoring_behavior() {
+    let mut matrix = RoutingMatrix::new();
+    let app_spotify = MixerNode::new("app_spotify", "Spotify", 0, 2);
+    let monitor_headphones = MixerNode::new("out_headphones", "Headphones Monitor", 2, 0)
+        .with_monitor(true)
+        .with_mute_when_monitoring(true);
+    let stream_virtual = MixerNode::new("out_stream", "OBS Stream Out", 2, 0);
+
+    matrix.add_node(app_spotify);
+    matrix.add_node(monitor_headphones);
+    matrix.add_node(stream_virtual);
+
+    matrix.connect(ConnectionWire::new(
+        "wire_stream_0",
+        AudioPinId::new("app_spotify", 0),
+        AudioPinId::new("out_stream", 0),
+        1.0,
+    ));
+    matrix.connect(
+        ConnectionWire::new(
+            "wire_monitor_0",
+            AudioPinId::new("app_spotify", 0),
+            AudioPinId::new("out_headphones", 0),
+            1.0,
+        )
+        .with_monitor(true),
+    );
+
+    let mut engine = AudioMixerEngine::new(48000);
+    *engine.matrix_mut() = matrix;
+    engine.submit_input("app_spotify", AudioChunk::new(vec![0.5, 0.5], 2, 48000));
+
+    let monitor_out = engine.process_destination("out_headphones");
+    assert!(!monitor_out.is_silent());
+
+    let stream_out = engine.process_destination("out_stream");
+    assert!(!stream_out.is_silent());
+}
+
+/// @brief Tests automatic redirection of audio streams to fallback device when primary device is offline.
+/// @return Returns `()` on assertion success.
+#[test]
+fn test_fallback_routing_when_primary_offline() {
+    let mut matrix = RoutingMatrix::new();
+    let src = MixerNode::new("src_app", "Game Audio", 0, 2);
+    let dst_primary = MixerNode::new("dst_usb_headset", "USB Headset", 2, 0);
+    let dst_fallback = MixerNode::new("dst_speakers", "Default Speakers", 2, 0);
+
+    matrix.add_node(src);
+    matrix.add_node(dst_primary);
+    matrix.add_node(dst_fallback);
+
+    matrix.set_fallback_node_id(Some("dst_speakers".to_string()));
+    matrix.connect(ConnectionWire::new(
+        "wire_game_to_usb",
+        AudioPinId::new("src_app", 0),
+        AudioPinId::new("dst_usb_headset", 0),
+        1.0,
+    ));
+
+    // Mark primary device offline (e.g. USB headset unplugged)
+    matrix.set_node_offline("dst_usb_headset", true);
+
+    let mut engine = AudioMixerEngine::new(48000);
+    *engine.matrix_mut() = matrix;
+    engine.submit_input("src_app", AudioChunk::new(vec![0.7, 0.7], 2, 48000));
+
+    // Primary device is offline -> should render silence
+    let primary_out = engine.process_destination("dst_usb_headset");
+    assert!(primary_out.is_silent());
+
+    // Fallback device receives rerouted audio automatically
+    let fallback_out = engine.process_destination("dst_speakers");
+    assert!(!fallback_out.is_silent());
+    assert!((fallback_out.samples[0] - 0.7).abs() < 1e-4);
+}

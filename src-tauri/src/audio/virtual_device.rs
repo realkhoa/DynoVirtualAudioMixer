@@ -204,10 +204,7 @@ impl VirtualDeviceManager {
         self.available_drivers.clone()
     }
 
-    /// @brief Creates a new virtual device descriptor and registers it in the manager.
-    /// @details Validates the device name, resolves duplicate names automatically by appending
-    /// a numerical index, binds discovered hardware endpoints or allocates synthetic loopback
-    /// endpoints, and activates the virtual device.
+    /// @brief Creates a new virtual device descriptor and registers it in the manager with default 2 channels.
     /// @param name User-assigned friendly name (must not be empty or whitespace-only).
     /// @param cable_type Virtual cable driver type to instantiate.
     /// @return `Ok(VirtualDeviceDescriptor)` on success, or `Err(String)` on validation failure.
@@ -216,10 +213,25 @@ impl VirtualDeviceManager {
         name: &str,
         cable_type: VirtualCableType,
     ) -> Result<VirtualDeviceDescriptor, String> {
+        self.create_virtual_device_with_channels(name, cable_type, 2)
+    }
+
+    /// @brief Creates a new virtual device descriptor with custom channel count and registers it.
+    /// @param name User-assigned friendly name (must not be empty or whitespace-only).
+    /// @param cable_type Virtual cable driver type to instantiate.
+    /// @param channels Number of audio channels supported (e.g. 2 for stereo, 4 for quad, 8 for multitrack).
+    /// @return `Ok(VirtualDeviceDescriptor)` on success, or `Err(String)` on validation failure.
+    pub fn create_virtual_device_with_channels(
+        &mut self,
+        name: &str,
+        cable_type: VirtualCableType,
+        channels: u16,
+    ) -> Result<VirtualDeviceDescriptor, String> {
         let trimmed_name = name.trim();
         if trimmed_name.is_empty() {
             return Err("Virtual device name cannot be empty or whitespace-only".to_string());
         }
+        let ch = if channels == 0 { 2 } else { channels };
 
         self.counter += 1;
         let final_name = self.disambiguate_name(trimmed_name);
@@ -238,7 +250,7 @@ impl VirtualDeviceManager {
             driver_type: cable_type,
             render_endpoint_id,
             capture_endpoint_id,
-            channels: 2,
+            channels: ch,
             sample_rate: 48000,
             is_active: true,
         };

@@ -2,8 +2,8 @@
  * @file VirtualDeviceNode.tsx
  * @brief Custom React Flow node component representing a virtual audio cable or loopback bus.
  * @details Represents virtual audio endpoints (such as "Stream Mix", "Podcast Aux", or "Discord Bus").
- * Provides pass-through stereo input pins on the left, stereo output pins on the right,
- * volume fader slider, mute toggle, and real-time pass-through VU meter.
+ * Provides dynamic multi-channel pass-through input pins on the left, pass-through output pins on the right,
+ * volume fader slider, mute toggle, channel count badge, and real-time pass-through VU meter.
  */
 
 import React from "react";
@@ -24,6 +24,8 @@ export function VirtualDeviceNode(props: NodeProps<Node<AudioNodeData>>): React.
     subtext,
     volume = 1.0,
     muted = false,
+    inputChannels = 2,
+    outputChannels = 2,
     leftLevelDb = -60,
     rightLevelDb = -60,
     onVolumeChange,
@@ -32,6 +34,8 @@ export function VirtualDeviceNode(props: NodeProps<Node<AudioNodeData>>): React.
   } = data;
 
   const volumePercent = Math.round(volume * 100);
+  const inCount = Math.max(1, inputChannels);
+  const outCount = Math.max(1, outputChannels);
 
   /**
    * @brief Handles slider change event and dispatches volume update.
@@ -57,33 +61,30 @@ export function VirtualDeviceNode(props: NodeProps<Node<AudioNodeData>>): React.
   };
 
   return (
-    <div className="group relative w-64 rounded-xl bg-slate-900/95 border border-slate-700/60 shadow-xl backdrop-blur-md hover:border-violet-500/50 transition-all select-none">
-      {/* Left Stereo Input Handles (Pins) */}
-      <div className="absolute -left-3 top-[36%] flex items-center">
-        <Handle
-          type="target"
-          position={Position.Left}
-          id="in-0"
-          className="!w-3 !h-3 !bg-violet-500 !border-2 !border-slate-900 !rounded-full hover:!bg-violet-400 transition-colors cursor-crosshair"
-          title="Left Input Channel (Pin 0)"
-        />
-        <span className="ml-1 text-[9px] font-mono font-bold text-violet-400 select-none">
-          L
-        </span>
-      </div>
-
-      <div className="absolute -left-3 top-[64%] flex items-center">
-        <Handle
-          type="target"
-          position={Position.Left}
-          id="in-1"
-          className="!w-3 !h-3 !bg-violet-500 !border-2 !border-slate-900 !rounded-full hover:!bg-violet-400 transition-colors cursor-crosshair"
-          title="Right Input Channel (Pin 1)"
-        />
-        <span className="ml-1 text-[9px] font-mono font-bold text-violet-400 select-none">
-          R
-        </span>
-      </div>
+    <div className="group relative w-68 rounded-xl bg-slate-900/95 border border-slate-700/60 shadow-xl backdrop-blur-md hover:border-violet-500/50 transition-all select-none">
+      {/* Left Dynamic Multi-Channel Input Handles (Pins) */}
+      {Array.from({ length: inCount }).map((_, idx) => {
+        const topPercent = Math.round(((idx + 1) / (inCount + 1)) * 100);
+        const label = inCount === 2 ? (idx === 0 ? "L" : "R") : `${idx + 1}`;
+        return (
+          <div
+            key={`vdev-in-${idx}`}
+            className="absolute -left-3 flex items-center"
+            style={{ top: `${topPercent}%` }}
+          >
+            <Handle
+              type="target"
+              position={Position.Left}
+              id={`in-${idx}`}
+              className="!w-3 !h-3 !bg-violet-500 !border-2 !border-slate-900 !rounded-full hover:!bg-violet-400 transition-colors cursor-crosshair"
+              title={`Input Channel ${idx + 1} (Pin ${idx})`}
+            />
+            <span className="ml-1 text-[9px] font-mono font-bold text-violet-400 select-none">
+              {label}
+            </span>
+          </div>
+        );
+      })}
 
       {/* Node Header */}
       <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-slate-800/80 bg-slate-800/30 rounded-t-xl">
@@ -92,9 +93,16 @@ export function VirtualDeviceNode(props: NodeProps<Node<AudioNodeData>>): React.
             <Layers className="w-4 h-4 text-violet-400" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-xs font-semibold text-slate-100 truncate" title={name}>
-              {name}
-            </h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-xs font-semibold text-slate-100 truncate" title={name}>
+                {name}
+              </h3>
+              {inCount > 2 && (
+                <span className="px-1 py-0.2 rounded text-[8px] font-mono font-semibold bg-violet-500/20 border border-violet-500/40 text-violet-300">
+                  {inCount} CH
+                </span>
+              )}
+            </div>
             <p className="text-[10px] text-slate-400 truncate flex items-center gap-1">
               <Cpu className="w-2.5 h-2.5 text-violet-400 inline" />
               {subtext || "Virtual Cable Bus"}
@@ -106,7 +114,7 @@ export function VirtualDeviceNode(props: NodeProps<Node<AudioNodeData>>): React.
           <button
             type="button"
             onClick={handleRemoveClick}
-            className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+            className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
             title="Remove virtual device node"
           >
             <X className="w-3.5 h-3.5" />
@@ -128,7 +136,7 @@ export function VirtualDeviceNode(props: NodeProps<Node<AudioNodeData>>): React.
           <button
             type="button"
             onClick={handleMuteClick}
-            className={`p-1.5 rounded-lg border transition-all ${
+            className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
               muted
                 ? "bg-rose-500/20 border-rose-500/40 text-rose-400"
                 : "bg-slate-800/80 border-slate-700/60 text-slate-300 hover:text-violet-400 hover:border-violet-500/40"
@@ -157,32 +165,29 @@ export function VirtualDeviceNode(props: NodeProps<Node<AudioNodeData>>): React.
         </div>
       </div>
 
-      {/* Right Stereo Output Handles (Pins) */}
-      <div className="absolute -right-3 top-[36%] flex items-center">
-        <span className="mr-1 text-[9px] font-mono font-bold text-violet-400 select-none">
-          L
-        </span>
-        <Handle
-          type="source"
-          position={Position.Right}
-          id="out-0"
-          className="!w-3 !h-3 !bg-violet-500 !border-2 !border-slate-900 !rounded-full hover:!bg-violet-400 transition-colors cursor-crosshair"
-          title="Left Output Pass-through (Pin 0)"
-        />
-      </div>
-
-      <div className="absolute -right-3 top-[64%] flex items-center">
-        <span className="mr-1 text-[9px] font-mono font-bold text-violet-400 select-none">
-          R
-        </span>
-        <Handle
-          type="source"
-          position={Position.Right}
-          id="out-1"
-          className="!w-3 !h-3 !bg-violet-500 !border-2 !border-slate-900 !rounded-full hover:!bg-violet-400 transition-colors cursor-crosshair"
-          title="Right Output Pass-through (Pin 1)"
-        />
-      </div>
+      {/* Right Dynamic Multi-Channel Output Handles (Pins) */}
+      {Array.from({ length: outCount }).map((_, idx) => {
+        const topPercent = Math.round(((idx + 1) / (outCount + 1)) * 100);
+        const label = outCount === 2 ? (idx === 0 ? "L" : "R") : `${idx + 1}`;
+        return (
+          <div
+            key={`vdev-out-${idx}`}
+            className="absolute -right-3 flex items-center"
+            style={{ top: `${topPercent}%` }}
+          >
+            <span className="mr-1 text-[9px] font-mono font-bold text-violet-400 select-none">
+              {label}
+            </span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id={`out-${idx}`}
+              className="!w-3 !h-3 !bg-violet-500 !border-2 !border-slate-900 !rounded-full hover:!bg-violet-400 transition-colors cursor-crosshair"
+              title={`Output Pass-through ${idx + 1} (Pin ${idx})`}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

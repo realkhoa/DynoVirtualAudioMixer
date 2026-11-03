@@ -2,10 +2,10 @@
  * @file App.tsx
  * @brief Root application container for Dyno Virtual Audio Mixer.
  * @details Integrates the interactive TopBar patchbay action header, the React Flow node graph
- * canvas, and the real-time buffer telemetry footer.
+ * canvas, Sidechain Auto-Ducking modal, and the floating Mini Bar overlay.
  */
 
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { TopBar, type TopBarHandle } from "./components/TopBar";
 import { GraphCanvas, type GraphCanvasHandle } from "./components/GraphCanvas";
 
@@ -23,14 +23,16 @@ function AppFooter(): React.JSX.Element {
       ].join(" ")}
     >
       <div className="flex items-center gap-2">
-        <span className="font-semibold text-slate-300">Dyno Core v0.1.0</span>
+        <span className="font-semibold text-slate-300">Dyno Core v0.2.0</span>
         <span>•</span>
         <span>Tauri v2 + Rust WASAPI Engine</span>
       </div>
       <div className="flex items-center gap-3">
-        <span>Buffers: Lock-Free SPSC RingBuffer</span>
+        <span>DSP: Noise Gate &amp; Sidechain Ducking</span>
         <span>•</span>
-        <span>Channels: Stereo / Multi-Channel</span>
+        <span>REST API: 127.0.0.1:49152</span>
+        <span>•</span>
+        <span>Multi-Channel (Up to 16 Ch)</span>
         <span>•</span>
         <span className="text-emerald-400 font-mono">60 FPS VU Metering</span>
       </div>
@@ -45,6 +47,8 @@ function AppFooter(): React.JSX.Element {
 export default function App(): React.JSX.Element {
   const canvasRef = useRef<GraphCanvasHandle>(null);
   const topBarRef = useRef<TopBarHandle>(null);
+  const [isMiniBarActive, setIsMiniBarActive] = useState(false);
+  const [isDuckingActive, setIsDuckingActive] = useState(false);
 
   return (
     <div className="flex flex-col h-screen w-screen bg-[#0a0f1d] text-slate-100 select-none overflow-hidden">
@@ -55,12 +59,18 @@ export default function App(): React.JSX.Element {
         onAddOutput={(p) => canvasRef.current?.addOutputNode(p)}
         onClearGraph={() => canvasRef.current?.clearGraph()}
         onResetHardware={() => canvasRef.current?.resetToHardwareDefaults()}
+        onOpenDucking={() => canvasRef.current?.openDuckingModal()}
+        onToggleMiniBar={() => canvasRef.current?.toggleMiniBar()}
+        isMiniBarActive={isMiniBarActive}
+        isDuckingActive={isDuckingActive}
       />
       <main className="flex-1 relative w-full h-full overflow-hidden">
         <GraphCanvas
           ref={canvasRef}
           onOpenAddSource={() => topBarRef.current?.openAddSource()}
           onOpenAddOutput={() => topBarRef.current?.openAddOutput()}
+          onMiniBarChange={setIsMiniBarActive}
+          onDuckingChange={setIsDuckingActive}
         />
       </main>
       <AppFooter />

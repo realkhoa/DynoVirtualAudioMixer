@@ -26,7 +26,7 @@ const DEFAULT_HANDLERS: NodeHandlers = {
 
 /**
  * @brief Builds standard audio baseline metrics for new nodes.
- * @param handlers Optional node event callback handlers.
+ * @param handlers? Optional node event callback handlers.
  * @return Default initial telemetry and callbacks.
  */
 function createBaseMetrics(handlers?: Partial<NodeHandlers>) {
@@ -47,7 +47,16 @@ function createBaseMetrics(handlers?: Partial<NodeHandlers>) {
  * @return React Flow Node populated with AudioNodeData.
  */
 export function createSourceNode(
-  payload: { name: string; subtext: string; iconType: AudioIconType; position?: { x: number; y: number } },
+  payload: {
+    name: string;
+    subtext: string;
+    iconType: AudioIconType;
+    channels?: number;
+    isOffline?: boolean;
+    noiseGateEnabled?: boolean;
+    noiseGateThresholdDb?: number;
+    position?: { x: number; y: number };
+  },
   handlers?: Partial<NodeHandlers>
 ): Node<AudioNodeData> {
   const newId = `src-${Date.now()}`;
@@ -62,7 +71,10 @@ export function createSourceNode(
       nodeType: "source",
       iconType: payload.iconType,
       inputChannels: 0,
-      outputChannels: 2,
+      outputChannels: payload.channels ?? 2,
+      isOffline: payload.isOffline ?? false,
+      noiseGateEnabled: payload.noiseGateEnabled ?? false,
+      noiseGateThresholdDb: payload.noiseGateThresholdDb ?? -45.0,
       ...createBaseMetrics(handlers),
     },
   };
@@ -75,10 +87,17 @@ export function createSourceNode(
  * @return React Flow Node populated with AudioNodeData.
  */
 export function createVirtualNode(
-  payload: { name: string; subtext: string; driverType?: string; position?: { x: number; y: number } },
+  payload: {
+    name: string;
+    subtext: string;
+    driverType?: string;
+    channels?: number;
+    position?: { x: number; y: number };
+  },
   handlers?: Partial<NodeHandlers>
 ): Node<AudioNodeData> {
   const newId = `vdev-${Date.now()}`;
+  const ch = payload.channels ?? 2;
   return {
     id: newId,
     type: "virtual",
@@ -89,8 +108,8 @@ export function createVirtualNode(
       subtext: payload.subtext,
       nodeType: "virtual",
       iconType: "virtual",
-      inputChannels: 2,
-      outputChannels: 2,
+      inputChannels: ch,
+      outputChannels: ch,
       ...createBaseMetrics(handlers),
     },
   };
@@ -103,7 +122,16 @@ export function createVirtualNode(
  * @return React Flow Node populated with AudioNodeData.
  */
 export function createOutputNode(
-  payload: { name: string; subtext: string; iconType: AudioIconType; position?: { x: number; y: number } },
+  payload: {
+    name: string;
+    subtext: string;
+    iconType: AudioIconType;
+    channels?: number;
+    isMonitor?: boolean;
+    muteWhenMonitoring?: boolean;
+    isOffline?: boolean;
+    position?: { x: number; y: number };
+  },
   handlers?: Partial<NodeHandlers>
 ): Node<AudioNodeData> {
   const newId = `out-${Date.now()}`;
@@ -117,8 +145,11 @@ export function createOutputNode(
       subtext: payload.subtext,
       nodeType: "output",
       iconType: payload.iconType,
-      inputChannels: 2,
+      inputChannels: payload.channels ?? 2,
       outputChannels: 0,
+      isMonitor: payload.isMonitor ?? false,
+      muteWhenMonitoring: payload.muteWhenMonitoring ?? false,
+      isOffline: payload.isOffline ?? false,
       ...createBaseMetrics(handlers),
     },
   };

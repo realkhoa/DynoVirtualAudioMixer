@@ -249,6 +249,13 @@ impl AudioChunk {
         }
     }
 
+    /// @brief Checks whether the chunk contains only digital silence (zeros).
+    /// @return `true` if empty or all samples are zero, `false` otherwise.
+    #[inline]
+    pub fn is_silent(&self) -> bool {
+        self.samples.is_empty() || self.samples.iter().all(|&s| s.abs() < 1e-6)
+    }
+
     /// @brief Returns the number of complete audio frames in this chunk.
     /// @return Frame count calculated as `samples.len() / channels`.
     #[inline]

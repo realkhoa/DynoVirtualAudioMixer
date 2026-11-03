@@ -141,3 +141,38 @@ fn test_set_device_active() {
     let not_found = manager.set_device_active("non-existent-id", false);
     assert_eq!(not_found, Ok(false));
 }
+
+/// @brief Test 8: Multi-channel (4, 8, 16 ch) virtual device creation and channel verification.
+/// @return Returns `()` on assertion success.
+#[test]
+fn test_multichannel_virtual_device_creation() {
+    let mut manager = VirtualDeviceManager::new();
+    let desc_4ch = manager
+        .create_virtual_device_with_channels(
+            "Podcast Quad Out",
+            VirtualCableType::SoftwareLoopbackEndpoint,
+            4,
+        )
+        .expect("4-channel virtual device should be created successfully");
+    assert_eq!(desc_4ch.channels, 4);
+    assert_eq!(desc_4ch.name, "Podcast Quad Out");
+
+    let desc_8ch = manager
+        .create_virtual_device_with_channels(
+            "Studio MultiTrack",
+            VirtualCableType::SoftwareLoopbackEndpoint,
+            8,
+        )
+        .expect("8-channel virtual device should be created successfully");
+    assert_eq!(desc_8ch.channels, 8);
+    assert_eq!(desc_8ch.name, "Studio MultiTrack");
+
+    let desc_16ch = manager
+        .create_virtual_device_with_channels(
+            "Pro Studio 16ch",
+            VirtualCableType::SoftwareLoopbackEndpoint,
+            16,
+        )
+        .expect("16-channel virtual device should be created successfully");
+    assert_eq!(desc_16ch.channels, 16);
+}

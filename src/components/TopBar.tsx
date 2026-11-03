@@ -1,13 +1,22 @@
 /**
  * @file TopBar.tsx
- * @brief Application header bar and modal managers for adding sources, virtual buses, and outputs.
+ * @brief Application header bar and modal managers for adding sources, virtual buses, outputs, auto-ducking, and compact mode.
  * @details Queries active WASAPI devices, running applications, and virtual cables via Tauri IPC,
  * rendering responsive modal dialogs to inject new nodes into the React Flow patchbay graph.
  */
 
 import React, { useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Radio, Plus, Trash2, RotateCcw, Cpu, Activity } from "lucide-react";
+import {
+  Radio,
+  Plus,
+  Trash2,
+  RotateCcw,
+  Cpu,
+  Activity,
+  Sparkles,
+  Minimize2,
+} from "lucide-react";
 import type {
   AudioDeviceDescriptor,
   AudioProcessDescriptor,
@@ -24,13 +33,21 @@ export interface TopBarProps {
   /** @brief Callback to inject a new source node into the patchbay. */
   onAddSource: (payload: { name: string; subtext: string; iconType: AudioIconType }) => void;
   /** @brief Callback to inject a new virtual device node into the patchbay. */
-  onAddVirtualDevice: (payload: { name: string; subtext: string; driverType?: string }) => void;
+  onAddVirtualDevice: (payload: { name: string; subtext: string; driverType?: string; channels?: number }) => void;
   /** @brief Callback to inject a new output node into the patchbay. */
   onAddOutput: (payload: { name: string; subtext: string; iconType: AudioIconType }) => void;
   /** @brief Callback to clear all nodes and edges from the canvas. */
   onClearGraph?: () => void;
   /** @brief Callback to reload real hardware defaults. */
   onResetHardware?: () => void;
+  /** @brief Callback to trigger Sidechain Auto-Ducking modal. */
+  onOpenDucking?: () => void;
+  /** @brief Callback to toggle floating Mini Bar overlay. */
+  onToggleMiniBar?: () => void;
+  /** @brief Whether compact mini bar is currently active. */
+  isMiniBarActive?: boolean;
+  /** @brief Whether auto ducking is active. */
+  isDuckingActive?: boolean;
 }
 
 /**
@@ -52,7 +69,17 @@ function TopBarRender(
   props: TopBarProps,
   ref: React.ForwardedRef<TopBarHandle>
 ): React.JSX.Element {
-  const { onAddSource, onAddVirtualDevice, onAddOutput, onClearGraph, onResetHardware } = props;
+  const {
+    onAddSource,
+    onAddVirtualDevice,
+    onAddOutput,
+    onClearGraph,
+    onResetHardware,
+    onOpenDucking,
+    onToggleMiniBar,
+    isMiniBarActive = false,
+    isDuckingActive = false,
+  } = props;
   const [activeModal, setActiveModal] = useState<"source" | "virtual" | "output" | null>(null);
   const [apps, setApps] = useState<AudioProcessDescriptor[]>([]);
   const [devices, setDevices] = useState<AudioDeviceDescriptor[]>([]);
@@ -143,6 +170,42 @@ function TopBarRender(
 
           <div className="h-4 w-[1px] bg-slate-800 mx-1" />
 
+          {/* Sidechain Auto-Ducking Trigger */}
+          {onOpenDucking && (
+            <button
+              type="button"
+              onClick={onOpenDucking}
+              title="Sidechain Auto-Ducking (Priority Mic Ducking)"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+                isDuckingActive
+                  ? "bg-amber-500/20 border-amber-500/40 text-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.2)]"
+                  : "bg-slate-800/80 border-slate-700/60 text-slate-300 hover:text-amber-400 hover:border-amber-500/40"
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Auto-Duck</span>
+            </button>
+          )}
+
+          {/* Compact Mini Bar Mode Toggle */}
+          {onToggleMiniBar && (
+            <button
+              type="button"
+              onClick={onToggleMiniBar}
+              title="Toggle Compact Mini Bar Overlay"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+                isMiniBarActive
+                  ? "bg-sky-500/20 border-sky-500/40 text-sky-300 shadow-[0_0_10px_rgba(56,189,248,0.2)]"
+                  : "bg-slate-800/80 border-slate-700/60 text-slate-300 hover:text-sky-400 hover:border-sky-500/40"
+              }`}
+            >
+              <Minimize2 className="w-3.5 h-3.5" />
+              <span>Mini Bar</span>
+            </button>
+          )}
+
+          <div className="h-4 w-[1px] bg-slate-800 mx-1" />
+
           {/* Reset real hardware defaults */}
           {onResetHardware && (
             <button
@@ -211,11 +274,12 @@ function TopBarRender(
       {/* Modal: Create Virtual Device */}
       {activeModal === "virtual" && (
         <CreateVirtualModal
-          onCreate={(name: string, driverType: string) => {
+          onCreate={(name: string, driverType: string, channels: number) => {
             onAddVirtualDevice({
               name,
-              subtext: `Virtual Audio Cable (${driverType})`,
+              subtext: `Virtual Cable (${channels} Ch, ${driverType})`,
               driverType,
+              channels,
             });
             setActiveModal(null);
           }}

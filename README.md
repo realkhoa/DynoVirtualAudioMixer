@@ -15,6 +15,14 @@ Dyno Virtual Audio Mixer delivers Rogue Amoeba Loopback feature parity natively 
 - **Hardware Patchbay Matrix:** Seamlessly route physical microphones, audio interfaces, and line inputs to multiple output endpoints simultaneously.
 - **Virtual Audio Cable Integration:** Inject mixed audio directly into Zoom, Discord, OBS, or Microsoft Teams via VB-Cable, Virtual Audio Cable (VAC), or built-in software loopback fallback endpoints.
 - **Smart Stereo Auto-Pairing:** Connecting Left channel (pin 0) automatically pairs and connects the corresponding Right channel (pin 1) if both endpoints support stereo, drastically accelerating patchbay setup.
+- **Wire Gain, Wire Mute & 180° Phase Inversion (Ø):** Click any connection cord to fine-tune individual cable gain (-60 dB to +6 dB), mute specific wires, or flip phase by 180 degrees to cancel out phase issues between multi-mic setups.
+- **Dedicated Monitors with Feedback Protection:** Mark any output destination as a personal monitor with one-click "Mute When Monitoring" to isolate audio and eliminate echo during live speech.
+- **Multi-Channel Virtual Buses (2, 4, 8, 16 Channels):** Allocate multi-track buses for professional DAWs (Ableton, FL Studio, Reaper) and 7.1 surround sound mastering.
+- **Hardware Hotplug Watchdog & Fallback Routing:** Automatic endpoint health monitoring dynamically reroutes audio to fallback devices when USB headsets or interfaces are disconnected.
+- **DSP Noise Gate Filter:** Real-time exponential envelope noise gate suppresses ambient fan/room noise on microphone inputs with configurable threshold (-60 to -20 dBFS).
+- **Sidechain Auto-Ducking:** Automatically attenuates background music/game audio whenever voice activity is detected on the streamer or podcast host microphone.
+- **Embedded Localhost REST API Server (`127.0.0.1:49152`):** Zero-dependency HTTP automation server for Elgato Stream Deck, OBS Studio webhooks, and Home Assistant integration.
+- **Floating Compact Mini Bar Mode:** Ultra-compact horizontal mixer overlay designed for uninterrupted gaming and live streaming.
 - **Real-Time 60 FPS Peak Decibel Metering:** Animated VU meters on every node and glowing Bezier patch cords with signal-reactive neon glow effects.
 - **Tanh Soft-Saturation Limiter:** Zero-allocation hyperbolic tangent (`tanh`) soft-knee limiter prevents digital clipping when summing multiple high-amplitude audio streams.
 - **Preset Profile Management:** Save, load, list, and switch complex routing configurations on disk with JSON persistence.
@@ -311,6 +319,30 @@ Broadcasted over the Tauri event channel `dyno://meter-update` at 60 FPS:
     }
   ]
 }
+```
+
+---
+
+### Embedded REST API Reference (`http://127.0.0.1:49152`)
+Dyno includes an embedded, zero-dependency REST HTTP server for external stream deck decks, OBS webhooks, and automation scripts:
+
+| Endpoint | Method | Request Payload | Response | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `/api/status` | `GET` | _None_ | `{"running": true, "nodes": [...], "meters": [...]}` | Query global mixer state and real-time peak decibel readings |
+| `/api/mute` | `POST` | `{"node_id": "node_mic", "muted": true}` | `{"success": true, "node_id": "node_mic", "muted": true}` | Toggle or set mute state for any mixer node |
+| `/api/volume` | `POST` | `{"node_id": "node_spotify", "volume": 0.75}` | `{"success": true, "node_id": "node_spotify", "volume": 0.75}` | Adjust linear volume multiplier (0.0 to 1.5) |
+| `/api/profile` | `POST` | `{"action": "load", "profile_name": "Podcast"}` | `{"success": true, "profile_name": "Podcast"}` | Switch or save active patchbay routing profiles |
+
+```bash
+# Example: Mute Host Microphone via curl
+curl -X POST http://127.0.0.1:49152/api/mute \
+  -H "Content-Type: application/json" \
+  -d '{"node_id": "node_mic", "muted": true}'
+
+# Example: Set Spotify Volume to 65%
+curl -X POST http://127.0.0.1:49152/api/volume \
+  -H "Content-Type: application/json" \
+  -d '{"node_id": "node_spotify", "volume": 0.65}'
 ```
 
 ---

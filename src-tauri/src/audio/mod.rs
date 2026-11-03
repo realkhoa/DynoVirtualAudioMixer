@@ -7,6 +7,7 @@
 //! cable managers, and real-time mixer pipelines.
 
 pub mod devices;
+pub mod dsp;
 pub mod matrix;
 pub mod mixer;
 pub mod process_scanner;
@@ -15,6 +16,7 @@ pub mod types;
 pub mod virtual_device;
 
 pub use devices::{list_audio_devices, AudioDeviceDescriptor, AudioDeviceType};
+pub use dsp::{AutoDucker, NoiseGate};
 pub use matrix::{AudioPinId, ConnectionWire, MixerNode, RoutingMatrix};
 pub use mixer::AudioMixerEngine;
 pub use process_scanner::{

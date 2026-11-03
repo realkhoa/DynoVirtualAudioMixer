@@ -17,27 +17,20 @@ import {
   type EdgeChange,
 } from "@xyflow/react";
 import { invoke } from "@tauri-apps/api/core";
-
-import type { AudioNodeData, AudioIconType, AudioDeviceDescriptor } from "../types/audio";
-import {
-  INITIAL_NODES,
-  INITIAL_EDGES,
-  createDefaultHardwareGraph,
-} from "../components/canvas/initialGraph";
-import {
-  createSourceNode,
-  createVirtualNode,
-  createOutputNode,
-} from "../components/canvas/nodeFactory";
+import type { AudioNodeData, AudioIconType } from "../types/audio";
+import { INITIAL_NODES, INITIAL_EDGES } from "../components/canvas/initialGraph";
+import { createSourceNode, createVirtualNode, createOutputNode } from "../components/canvas/nodeFactory";
 export * from "./audioGraphHelpers";
 import {
   createPatchEdge,
   computeStereoPairing,
   removeEdgeFromList,
   buildAudioGraphDto,
+  loadPersistedGraph,
+  savePersistedGraph,
+  fetchDefaultHardwareGraph,
+  STORAGE_KEY,
 } from "./audioGraphHelpers";
-
-const STORAGE_KEY = "dyno_mixer_graph_state_v2";
 
 /**
  * @brief Return payload contract for useAudioGraph hook.
@@ -68,7 +61,7 @@ export interface UseAudioGraphResult {
   /** @brief Injects a new audio source node. */
   addSourceNode: (payload: { name: string; subtext: string; iconType: AudioIconType }) => void;
   /** @brief Injects a new virtual audio device bus node. */
-  addVirtualNode: (payload: { name: string; subtext: string; driverType?: string }) => void;
+  addVirtualNode: (payload: { name: string; subtext: string; driverType?: string; channels?: number }) => void;
   /** @brief Injects a new output destination node. */
   addOutputNode: (payload: { name: string; subtext: string; iconType: AudioIconType }) => void;
   /** @brief Clears the entire graph to an empty canvas. */
@@ -77,24 +70,6 @@ export interface UseAudioGraphResult {
   resetToHardwareDefaults: () => Promise<void>;
   /** @brief Synchronizes the current patchbay topology to Tauri backend. */
   syncGraphToBackend: (currentNodes: Node<AudioNodeData>[], currentEdges: Edge[]) => void;
-}
-
-/**
- * @brief Attempts to load persisted graph topology from browser localStorage.
- * @return {{ nodes: Node<AudioNodeData>[]; edges: Edge[] } | null} Restored graph or null.
- */
-function loadPersistedGraph(): { nodes: Node<AudioNodeData>[]; edges: Edge[] } | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed?.nodes) && Array.isArray(parsed?.edges)) {
-      return { nodes: parsed.nodes, edges: parsed.edges };
-    }
-  } catch {
-    // Ignore storage parse errors
-  }
-  return null;
 }
 
 /**
@@ -134,15 +109,7 @@ export function useAudioGraph(
         // Silently ignore in browser preview mode
       });
 
-      // Save to localStorage
-      try {
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({ nodes: currentNodes, edges: currentEdges })
-        );
-      } catch {
-        // Ignore storage write issues
-      }
+      savePersistedGraph(currentNodes, currentEdges);
     },
     []
   );
@@ -238,26 +205,12 @@ export function useAudioGraph(
    * @brief Resets canvas to real detected system hardware endpoints (Default Mic -> Default Output).
    */
   const resetToHardwareDefaults = useCallback(async () => {
-    try {
-      const realDevices = await invoke<AudioDeviceDescriptor[]>("get_devices");
-      if (Array.isArray(realDevices) && realDevices.length > 0) {
-        const { nodes: hwNodes, edges: hwEdges } = createDefaultHardwareGraph(realDevices);
-        const configuredNodes = hwNodes.map((n) => ({
-          ...n,
-          data: { ...n.data, ...nodeHandlers },
-        }));
-        const configuredEdges = hwEdges.map((e) => ({
-          ...e,
-          data: { ...e.data, onDelete: handleRemoveEdge },
-        }));
-
-        setNodes(configuredNodes);
-        setEdges(configuredEdges);
-        syncGraphToBackend(configuredNodes, configuredEdges);
-        return;
-      }
-    } catch {
-      // Fallback if not inside Tauri
+    const hwGraph = await fetchDefaultHardwareGraph(nodeHandlers, handleRemoveEdge);
+    if (hwGraph) {
+      setNodes(hwGraph.nodes);
+      setEdges(hwGraph.edges);
+      syncGraphToBackend(hwGraph.nodes, hwGraph.edges);
+      return;
     }
     clearGraph();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -350,24 +303,21 @@ export function useAudioGraph(
     (payload: { name: string; subtext: string; iconType: AudioIconType }) => {
       insertNode(createSourceNode(payload, nodeHandlers));
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [insertNode, handleVolumeChange, handleMuteToggle, handleRemoveNode]
+    [insertNode, nodeHandlers]
   );
 
   const addVirtualNode = useCallback(
-    (payload: { name: string; subtext: string; driverType?: string }) => {
+    (payload: { name: string; subtext: string; driverType?: string; channels?: number }) => {
       insertNode(createVirtualNode(payload, nodeHandlers));
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [insertNode, handleVolumeChange, handleMuteToggle, handleRemoveNode]
+    [insertNode, nodeHandlers]
   );
 
   const addOutputNode = useCallback(
     (payload: { name: string; subtext: string; iconType: AudioIconType }) => {
       insertNode(createOutputNode(payload, nodeHandlers));
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [insertNode, handleVolumeChange, handleMuteToggle, handleRemoveNode]
+    [insertNode, nodeHandlers]
   );
 
   return {

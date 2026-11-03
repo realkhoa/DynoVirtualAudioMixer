@@ -2,10 +2,11 @@
  * @file SourceNode.tsx
  * @brief Custom React Flow node component representing an audio input source.
  * @details Represents applications (Spotify, Discord, games) or physical capture devices (microphones).
- * Provides L/R stereo output connection pins, volume fader slider, mute toggle, and real-time VU meter.
+ * Provides dynamic multi-channel output connection pins, integrated DSP noise gate controls, volume fader slider,
+ * mute toggle, offline hardware status badge, and real-time VU meter.
  */
 
-import React from "react";
+import React, { useState } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import {
   Mic,
@@ -17,6 +18,8 @@ import {
   VolumeX,
   X,
   AudioWaveform,
+  AlertCircle,
+  SlidersHorizontal,
 } from "lucide-react";
 import type { AudioNodeData, AudioIconType } from "../../types/audio";
 import { VuMeter } from "./VuMeter";
@@ -54,14 +57,24 @@ export function SourceNode(props: NodeProps<Node<AudioNodeData>>): React.JSX.Ele
     iconType,
     volume = 1.0,
     muted = false,
+    outputChannels = 2,
     leftLevelDb = -60,
     rightLevelDb = -60,
+    isOffline = false,
+    noiseGateEnabled = false,
+    noiseGateThresholdDb = -45.0,
     onVolumeChange,
     onMuteToggle,
     onRemove,
   } = data;
 
+  const [gateEnabled, setGateEnabled] = useState(noiseGateEnabled);
+  const [gateThreshold, setGateThreshold] = useState(noiseGateThresholdDb);
+  const [showGateSettings, setShowGateSettings] = useState(false);
+
   const volumePercent = Math.round(volume * 100);
+  const channelCount = Math.max(1, outputChannels);
+  const isMic = iconType === "mic";
 
   /**
    * @brief Handles slider change event and dispatches volume update.
@@ -86,8 +99,26 @@ export function SourceNode(props: NodeProps<Node<AudioNodeData>>): React.JSX.Ele
     onRemove?.(id);
   };
 
+  /**
+   * @brief Updates noise gate parameters in node data.
+   * @param enabled Whether noise gate is active.
+   * @param thresh Threshold level in dBFS.
+   */
+  const handleGateChange = (enabled: boolean, thresh: number) => {
+    setGateEnabled(enabled);
+    setGateThreshold(thresh);
+    data.noiseGateEnabled = enabled;
+    data.noiseGateThresholdDb = thresh;
+  };
+
   return (
-    <div className="group relative w-64 rounded-xl bg-slate-900/95 border border-slate-700/60 shadow-xl backdrop-blur-md hover:border-sky-500/50 transition-all select-none">
+    <div
+      className={`group relative w-68 rounded-xl bg-slate-900/95 border shadow-xl backdrop-blur-md transition-all select-none ${
+        isOffline
+          ? "border-amber-500/60 bg-amber-950/20 shadow-amber-950/40"
+          : "border-slate-700/60 hover:border-sky-500/50"
+      }`}
+    >
       {/* Node Header */}
       <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-slate-800/80 bg-slate-800/30 rounded-t-xl">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -95,12 +126,25 @@ export function SourceNode(props: NodeProps<Node<AudioNodeData>>): React.JSX.Ele
             {renderSourceIcon(iconType)}
           </div>
           <div className="min-w-0">
-            <h3 className="text-xs font-semibold text-slate-100 truncate" title={name}>
-              {name}
-            </h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-xs font-semibold text-slate-100 truncate" title={name}>
+                {name}
+              </h3>
+              {gateEnabled && (
+                <span className="px-1 py-0.2 rounded text-[8px] font-mono font-semibold bg-emerald-500/20 border border-emerald-500/40 text-emerald-300">
+                  GATE
+                </span>
+              )}
+              {isOffline && (
+                <span className="px-1 py-0.2 rounded text-[8px] font-mono font-semibold bg-amber-500/20 border border-amber-500/40 text-amber-300 flex items-center gap-0.5">
+                  <AlertCircle className="w-2.5 h-2.5" />
+                  OFFLINE
+                </span>
+              )}
+            </div>
             <p className="text-[10px] text-slate-400 truncate flex items-center gap-1">
               <AudioWaveform className="w-2.5 h-2.5 text-sky-400 inline" />
-              {subtext || "Audio Source"}
+              {isOffline ? "Hardware Disconnected" : subtext || "Audio Source"}
             </p>
           </div>
         </div>
@@ -109,7 +153,7 @@ export function SourceNode(props: NodeProps<Node<AudioNodeData>>): React.JSX.Ele
           <button
             type="button"
             onClick={handleRemoveClick}
-            className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+            className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
             title="Remove source node"
           >
             <X className="w-3.5 h-3.5" />
@@ -123,7 +167,7 @@ export function SourceNode(props: NodeProps<Node<AudioNodeData>>): React.JSX.Ele
         <VuMeter
           leftLevelDb={leftLevelDb}
           rightLevelDb={rightLevelDb}
-          muted={muted}
+          muted={muted || isOffline}
         />
 
         {/* Volume & Mute Controls */}
@@ -131,7 +175,8 @@ export function SourceNode(props: NodeProps<Node<AudioNodeData>>): React.JSX.Ele
           <button
             type="button"
             onClick={handleMuteClick}
-            className={`p-1.5 rounded-lg border transition-all ${
+            disabled={isOffline}
+            className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
               muted
                 ? "bg-rose-500/20 border-rose-500/40 text-rose-400"
                 : "bg-slate-800/80 border-slate-700/60 text-slate-300 hover:text-sky-400 hover:border-sky-500/40"
@@ -149,7 +194,7 @@ export function SourceNode(props: NodeProps<Node<AudioNodeData>>): React.JSX.Ele
               step="0.01"
               value={volume}
               onChange={handleVolumeInput}
-              disabled={muted}
+              disabled={muted || isOffline}
               className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-400 disabled:opacity-40"
               title={`Volume: ${volumePercent}%`}
             />
@@ -157,35 +202,77 @@ export function SourceNode(props: NodeProps<Node<AudioNodeData>>): React.JSX.Ele
               {volumePercent}%
             </span>
           </div>
+
+          {/* Noise Gate button for Mic inputs */}
+          {isMic && (
+            <button
+              type="button"
+              onClick={() => setShowGateSettings(!showGateSettings)}
+              className={`p-1.5 rounded-lg border text-[10px] font-mono transition-all cursor-pointer ${
+                gateEnabled
+                  ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300"
+                  : "bg-slate-800/80 border-slate-700/60 text-slate-400 hover:text-slate-200"
+              }`}
+              title="Configure DSP Noise Gate Filter"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
+
+        {/* Expanded Noise Gate Settings Strip */}
+        {showGateSettings && (
+          <div className="pt-2 border-t border-slate-800/60 flex flex-col gap-1.5 text-[10px] text-slate-300">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={gateEnabled}
+                  onChange={(e) => handleGateChange(e.target.checked, gateThreshold)}
+                  className="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0"
+                />
+                <span className="font-medium text-emerald-400">DSP Noise Gate</span>
+              </label>
+              <span className="font-mono text-slate-400">{gateThreshold} dBFS</span>
+            </div>
+            <input
+              type="range"
+              min="-60"
+              max="-20"
+              step="1"
+              value={gateThreshold}
+              onChange={(e) => handleGateChange(gateEnabled, parseFloat(e.target.value))}
+              disabled={!gateEnabled}
+              className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-400 disabled:opacity-40"
+              title={`Gate Threshold: ${gateThreshold} dBFS`}
+            />
+          </div>
+        )}
       </div>
 
-      {/* Right Stereo Output Handles (Pins) */}
-      <div className="absolute -right-3 top-[36%] flex items-center">
-        <span className="mr-1 text-[9px] font-mono font-bold text-sky-400 select-none">
-          L
-        </span>
-        <Handle
-          type="source"
-          position={Position.Right}
-          id="out-0"
-          className="!w-3 !h-3 !bg-sky-500 !border-2 !border-slate-900 !rounded-full hover:!bg-sky-400 transition-colors cursor-crosshair"
-          title="Left Output Channel (Pin 0)"
-        />
-      </div>
-
-      <div className="absolute -right-3 top-[64%] flex items-center">
-        <span className="mr-1 text-[9px] font-mono font-bold text-sky-400 select-none">
-          R
-        </span>
-        <Handle
-          type="source"
-          position={Position.Right}
-          id="out-1"
-          className="!w-3 !h-3 !bg-sky-500 !border-2 !border-slate-900 !rounded-full hover:!bg-sky-400 transition-colors cursor-crosshair"
-          title="Right Output Channel (Pin 1)"
-        />
-      </div>
+      {/* Dynamic Multi-Channel Output Handles (Pins) */}
+      {Array.from({ length: channelCount }).map((_, idx) => {
+        const topPercent = Math.round(((idx + 1) / (channelCount + 1)) * 100);
+        const label = channelCount === 2 ? (idx === 0 ? "L" : "R") : `${idx + 1}`;
+        return (
+          <div
+            key={`pin-out-${idx}`}
+            className="absolute -right-3 flex items-center"
+            style={{ top: `${topPercent}%` }}
+          >
+            <span className="mr-1 text-[9px] font-mono font-bold text-sky-400 select-none">
+              {label}
+            </span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id={`out-${idx}`}
+              className="!w-3 !h-3 !bg-sky-500 !border-2 !border-slate-900 !rounded-full hover:!bg-sky-400 transition-colors cursor-crosshair"
+              title={`Output Channel ${idx + 1} (Pin ${idx})`}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
