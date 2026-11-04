@@ -22,10 +22,11 @@ pub mod tray;
 use tauri::Manager;
 
 pub use commands::{
-    create_virtual_device, delete_profile, get_devices, get_running_apps, get_virtual_devices,
-    list_profiles, load_profile, remove_virtual_device, save_profile, set_node_monitor_mode,
-    set_node_volume, set_wire_config, start_meter_stream, update_routing_graph, AppState,
-    AudioGraphDto, ConnectionDto, MeterUpdateDto, NodeDto, NodeMeterDto,
+    check_cable_driver_status, create_virtual_device, delete_profile, get_devices,
+    get_running_apps, get_virtual_devices, install_cable_driver, list_profiles, load_profile,
+    remove_virtual_device, save_profile, set_node_monitor_mode, set_node_volume, set_wire_config,
+    start_meter_stream, uninstall_cable_driver, update_routing_graph, AppState, AudioGraphDto,
+    ConnectionDto, MeterUpdateDto, NodeDto, NodeMeterDto,
 };
 pub use presets::{ProfileManager, ProfilePreset};
 
@@ -66,6 +67,9 @@ pub fn run() {
             commands::handlers::get_virtual_devices,
             commands::handlers::create_virtual_device,
             commands::handlers::remove_virtual_device,
+            commands::handlers::check_cable_driver_status,
+            commands::handlers::install_cable_driver,
+            commands::handlers::uninstall_cable_driver,
             commands::handlers::update_routing_graph,
             commands::handlers::set_node_volume,
             commands::handlers::set_wire_config,

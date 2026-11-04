@@ -286,7 +286,10 @@ function TopBarRender(
           onCreate={(name: string, driverType: string, channels: number) => {
             onAddVirtualDevice({
               name,
-              subtext: `Virtual Cable (${channels} Ch, ${driverType})`,
+              subtext:
+                driverType === "VBCable"
+                  ? `VB-Audio Cable • ${channels} Ch`
+                  : `Dyno Bus • ${channels} Ch`,
               driverType,
               channels,
             });

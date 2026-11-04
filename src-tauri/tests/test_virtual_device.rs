@@ -5,7 +5,8 @@
 //! device removal, and JSON serialization for Tauri IPC.
 
 use dyno_virtual_audio_mixer_lib::audio::virtual_device::{
-    VirtualCableType, VirtualDeviceDescriptor, VirtualDeviceManager,
+    get_driver_cache_dir, is_windows_cable_installed, VirtualCableType, VirtualDeviceDescriptor,
+    VirtualDeviceManager,
 };
 
 /// @brief Test 1: VirtualDeviceManager instantiation and driver detection returns known types or fallback software loopback.
@@ -175,4 +176,22 @@ fn test_multichannel_virtual_device_creation() {
         )
         .expect("16-channel virtual device should be created successfully");
     assert_eq!(desc_16ch.channels, 16);
+}
+
+/// @brief Test 9: Resolution of driver cache directory structure.
+#[test]
+fn test_driver_cache_dir_resolution() {
+    let cache_dir = get_driver_cache_dir();
+    let path_str = cache_dir.to_string_lossy();
+    assert!(
+        path_str.contains("DynoVirtualAudioMixer") && path_str.contains("driver_cache"),
+        "Driver cache directory must contain expected path components"
+    );
+}
+
+/// @brief Test 10: Non-panicking query of Windows audio cable driver installation status.
+#[test]
+fn test_is_windows_cable_installed_execution() {
+    // Calling is_windows_cable_installed should execute cleanly without panicking
+    let _status = is_windows_cable_installed();
 }

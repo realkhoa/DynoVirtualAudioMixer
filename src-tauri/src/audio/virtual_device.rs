@@ -5,6 +5,8 @@
 //! fallback internal software loopback endpoints for zero-hardware WASAPI routing.
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use serde::{Deserialize, Serialize};
 
 use crate::audio::devices::list_audio_devices;
@@ -382,4 +384,147 @@ impl VirtualDeviceManager {
             }
         }
     }
+}
+
+/// @brief Determines the persistent driver cache folder in %LOCALAPPDATA%/DynoVirtualAudioMixer/driver_cache.
+/// @return PathBuf pointing to the driver cache directory.
+pub fn get_driver_cache_dir() -> PathBuf {
+    let local_app_data = std::env::var("LOCALAPPDATA")
+        .unwrap_or_else(|_| "C:\\Users\\Default\\AppData\\Local".to_string());
+    PathBuf::from(local_app_data)
+        .join("DynoVirtualAudioMixer")
+        .join("driver_cache")
+}
+
+/// @brief Checks if Windows Virtual Cable audio endpoints are active in Windows Sound Settings.
+/// @return `true` if CABLE Input or CABLE Output is detected, `false` otherwise.
+pub fn is_windows_cable_installed() -> bool {
+    if let Ok(devices) = list_audio_devices() {
+        for dev in devices {
+            let lower = dev.name.to_lowercase();
+            if lower.contains("vb-audio")
+                || lower.contains("cable input")
+                || lower.contains("cable output")
+                || lower.contains("cable-a")
+                || lower.contains("cable-b")
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// @brief Ensures the official VB-Audio Cable driver setup files are downloaded and extracted.
+/// @param cache_dir Target directory to store the driver package.
+/// @return `Ok(PathBuf)` pointing to `VBCABLE_Setup_x64.exe`, or `Err(String)` on failure.
+pub fn prepare_driver_package(cache_dir: &Path) -> Result<PathBuf, String> {
+    if let Err(e) = std::fs::create_dir_all(cache_dir) {
+        return Err(format!("Failed to create driver cache directory: {e}"));
+    }
+
+    let setup_sub = cache_dir.join("VBCABLE_Driver_Pack43").join("VBCABLE_Setup_x64.exe");
+    if setup_sub.exists() {
+        return Ok(setup_sub);
+    }
+
+    let flat_setup = cache_dir.join("VBCABLE_Setup_x64.exe");
+    if flat_setup.exists() {
+        return Ok(flat_setup);
+    }
+
+    let zip_path = cache_dir.join("VBCABLE_Driver_Pack43.zip");
+    let zip_str = zip_path.to_string_lossy().replace('\\', "/");
+    let cache_str = cache_dir.to_string_lossy().replace('\\', "/");
+
+    let download_script = format!(
+        r#"$ProgressPreference = 'SilentlyContinue'; & curl.exe -sSL "https://download.vb-audio.com/Download_CAB/VBCABLE_Driver_Pack43.zip" -o "{zip_str}"; if (-not (Test-Path "{zip_str}")) {{ (New-Object System.Net.WebClient).DownloadFile("https://download.vb-audio.com/Download_CAB/VBCABLE_Driver_Pack43.zip", "{zip_str}") }}"#
+    );
+
+    let output = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &download_script])
+        .output()
+        .map_err(|e| format!("Failed to execute download script: {e}"))?;
+
+    if !zip_path.exists() {
+        return Err(format!(
+            "Driver download failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    let extract_script = format!(
+        r#"& tar.exe -xf "{zip_str}" -C "{cache_str}"; if (-not (Test-Path "{cache_str}/VBCABLE_Setup_x64.exe") -and -not (Test-Path "{cache_str}/VBCABLE_Driver_Pack43/VBCABLE_Setup_x64.exe")) {{ Expand-Archive -Path "{zip_str}" -DestinationPath "{cache_str}" -Force }}"#
+    );
+
+    let _ = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &extract_script])
+        .output();
+
+    if setup_sub.exists() {
+        Ok(setup_sub)
+    } else if flat_setup.exists() {
+        Ok(flat_setup)
+    } else {
+        Err("Driver archive extracted but VBCABLE_Setup_x64.exe was not found".to_string())
+    }
+}
+
+/// @brief Installs the Windows Virtual Cable driver on-demand using Windows Administrator elevation.
+/// @return `Ok(String)` describing success, or `Err(String)` describing the failure.
+pub fn install_windows_cable_driver() -> Result<String, String> {
+    let cache_dir = get_driver_cache_dir();
+    let setup_exe = prepare_driver_package(&cache_dir)?;
+    let setup_str = setup_exe.to_string_lossy();
+
+    let install_cmd = format!(
+        r#"Start-Process -FilePath "{setup_str}" -ArgumentList "-i" -Verb RunAs -Wait"#
+    );
+
+    let status = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &install_cmd])
+        .status()
+        .map_err(|e| format!("Failed to launch driver installer: {e}"))?;
+
+    if !status.success() {
+        return Err("Driver installation cancelled or elevation denied by user".to_string());
+    }
+
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+
+    if is_windows_cable_installed() {
+        Ok("Windows Virtual Cable installed successfully. CABLE Input and CABLE Output are active in Windows Sound Settings.".to_string())
+    } else {
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        if is_windows_cable_installed() {
+            Ok("Windows Virtual Cable installed successfully.".to_string())
+        } else {
+            Ok("Installer completed. Please check Windows Sound Settings (mmsys.cpl) or restart audio services if needed.".to_string())
+        }
+    }
+}
+
+/// @brief Uninstalls the Windows Virtual Cable driver and completely removes it from Windows.
+/// @return `Ok(String)` describing success, or `Err(String)` describing the failure.
+pub fn uninstall_windows_cable_driver() -> Result<String, String> {
+    let cache_dir = get_driver_cache_dir();
+    let setup_exe = prepare_driver_package(&cache_dir)?;
+    let setup_str = setup_exe.to_string_lossy();
+
+    let uninstall_cmd = format!(
+        r#"Start-Process -FilePath "{setup_str}" -ArgumentList "-u" -Verb RunAs -Wait"#
+    );
+
+    let status = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &uninstall_cmd])
+        .status()
+        .map_err(|e| format!("Failed to launch driver uninstaller: {e}"))?;
+
+    if !status.success() {
+        return Err("Driver uninstallation cancelled or elevation denied by user".to_string());
+    }
+
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+
+    Ok("Windows Virtual Cable driver has been completely uninstalled from Windows.".to_string())
 }

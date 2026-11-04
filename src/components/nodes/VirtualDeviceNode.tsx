@@ -97,6 +97,13 @@ export function VirtualDeviceNode(props: NodeProps<Node<AudioNodeData>>): React.
               <h3 className="text-xs font-semibold text-slate-100 truncate" title={name}>
                 {name}
               </h3>
+              {(subtext?.toLowerCase().includes("vb-audio") ||
+                subtext?.toLowerCase().includes("cable") ||
+                subtext?.toLowerCase().includes("windows")) && (
+                <span className="px-1 py-0.2 rounded text-[8px] font-mono font-medium bg-emerald-500/20 border border-emerald-500/40 text-emerald-300" title="Windows Audio Endpoint (Visible in Windows Sound Settings)">
+                  WIN
+                </span>
+              )}
               {inCount > 2 && (
                 <span className="px-1 py-0.2 rounded text-[8px] font-mono font-semibold bg-violet-500/20 border border-violet-500/40 text-violet-300">
                   {inCount} CH

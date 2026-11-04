@@ -5,7 +5,10 @@
 
 use crate::audio::devices::{list_audio_devices, AudioDeviceDescriptor};
 use crate::audio::process_scanner::{list_audio_processes, AudioProcessDescriptor};
-use crate::audio::virtual_device::{VirtualCableType, VirtualDeviceDescriptor};
+use crate::audio::virtual_device::{
+    install_windows_cable_driver, is_windows_cable_installed, uninstall_windows_cable_driver,
+    VirtualCableType, VirtualDeviceDescriptor,
+};
 use crate::commands::dto::AudioGraphDto;
 use crate::commands::state::AppState;
 use crate::presets::ProfilePreset;
@@ -62,6 +65,27 @@ pub fn create_virtual_device(
     let ch = channels.unwrap_or(2);
     let mut vdevs = state.write_virtual_devices()?;
     vdevs.create_virtual_device_with_channels(&name, driver, ch)
+}
+
+/// @brief Tauri command to check if the Windows Virtual Audio Cable driver is installed and active.
+/// @return `Ok(true)` if driver endpoints are detected in Windows Sound Settings, `Ok(false)` otherwise.
+#[tauri::command]
+pub fn check_cable_driver_status() -> Result<bool, String> {
+    Ok(is_windows_cable_installed())
+}
+
+/// @brief Tauri command to trigger on-demand installation of the Windows Virtual Cable driver via Administrator elevation.
+/// @return `Ok(String)` message on success, or `Err(String)` if elevation was denied or install failed.
+#[tauri::command]
+pub fn install_cable_driver() -> Result<String, String> {
+    install_windows_cable_driver()
+}
+
+/// @brief Tauri command to completely uninstall the Windows Virtual Cable driver from Windows via Administrator elevation.
+/// @return `Ok(String)` message on success, or `Err(String)` if elevation was denied or uninstall failed.
+#[tauri::command]
+pub fn uninstall_cable_driver() -> Result<String, String> {
+    uninstall_windows_cable_driver()
 }
 
 /// @brief Tauri command to remove a registered virtual audio device by its unique ID.

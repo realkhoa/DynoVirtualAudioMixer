@@ -174,6 +174,9 @@ export function useAudioGraph(
    */
   const handleRemoveNode = useCallback(
     (id: string) => {
+      if (id.startsWith("vdev-")) {
+        invoke("remove_virtual_device", { id }).catch(() => {});
+      }
       setNodes((nds) => {
         const nextNodes = nds.filter((n) => n.id !== id);
         setEdges((eds) => {
